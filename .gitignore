@@ -6,6 +6,7 @@ yarn-error.log*
 
 # Vite / Vue
 web/dist/
+packages/*/dist/
 
 # Environment
 .env
