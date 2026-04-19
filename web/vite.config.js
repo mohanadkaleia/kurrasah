@@ -14,6 +14,10 @@ import tailwindcss from '@tailwindcss/vite'
 const kurrasahRoot = fileURLToPath(new URL('../packages/kurrasah', import.meta.url))
 
 export default defineConfig({
+  // Allow the deploy workflow to set the base path for GitHub Pages
+  // (served under `/kurrasah/`). In dev and for root-origin deployments
+  // this stays `/`. Vue Router picks it up via `import.meta.env.BASE_URL`.
+  base: process.env.VITE_BASE || '/',
   plugins: [vue(), tailwindcss()],
   resolve: {
     alias: [

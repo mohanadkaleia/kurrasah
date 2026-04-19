@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # Run the package's vitest suite. Any failure blocks the workflow
+      # and surfaces in the PR before a bad release can reach npm.
+      - run: npm run test -w kurrasah
+
+      # Verify the package build is clean. Catches broken imports,
+      # missing exports, and config drift independently of the tests.
+      - run: npm run build -w kurrasah
+
+      # Verify the web demo builds cleanly. Catches consumer-side
+      # integration regressions (alias resolution, router config, etc.).
+      - run: npm run build -w web

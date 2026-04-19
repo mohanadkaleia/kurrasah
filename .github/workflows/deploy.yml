@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Deploy demo to GitHub Pages
 
 on:
   push:
@@ -26,12 +26,23 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: npm run build
+
+      # Build the web demo with the GitHub Pages subpath baked in.
+      # `VITE_BASE` is picked up by `web/vite.config.js` → `config.base`
+      # and by the Vue Router via `import.meta.env.BASE_URL`.
+      - run: npm run build -w web
+        env:
+          VITE_BASE: /kurrasah/
+
+      # SPA fallback: GitHub Pages serves `404.html` for unknown paths.
+      # Copying index.html lets deep links like /docs resolve through
+      # the Vue Router.
+      - run: cp web/dist/index.html web/dist/404.html
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist
+          path: ./web/dist
 
   deploy:
     environment:

@@ -30,7 +30,10 @@ const routes = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
+  // `BASE_URL` is injected by Vite from `config.base`. On GitHub Pages
+  // the site lives under `/kurrasah/`, so the router must know to strip
+  // that prefix from incoming paths.
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes,
 })
 
