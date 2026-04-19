@@ -145,6 +145,7 @@ A subset of CSS custom properties can be overridden on `.editor-root` (or any an
 - **Changing the `placeholder` prop does not rebuild the view** and does not affect the undo stack. The placeholder decoration updates in place.
 - **`execCommand` returns `true` on the async link/image path as soon as the callback is dispatched, not when the edit lands.** For sync commands (`toggleBold` etc.) the boolean is "edit applied". For `toggleLink` / `insertImage` when a consumer callback is active, the boolean is "request accepted"; the edit is committed later when the callback resolves, or skipped silently if the consumer returns `null` / an invalid URL. If you need to await the edit, hold a reference to the editor view and observe the next transaction.
 - **`focus()` is not called after an async link/image command.** The consumer modal owns focus until the callback resolves. Sync commands still auto-focus as before.
+- **Link clicks.** In **readonly** mode, a plain click on a link follows it in a new tab. In **edit** mode, a plain click places the cursor inside the link (so the anchor text stays editable); **Cmd/Ctrl+click** follows the link. This matches Notion / Google Docs.
 
 ## Bundling
 
