@@ -29,7 +29,6 @@ npm-workspaces monorepo with four parts:
   - `web/src/api/documents.js` — REST client (`fetch` wrapper)
   - `web/src/composables/useDocuments.js` — reactive state + debounced update helper
   - `web/src/components/` — UI (layout, dialogs) and editor (VersionDialog)
-  - `e2e/` — Playwright specs
 - **`db/`** — SQLite with a custom migration system
   - `db/db.py` — `DatabaseManager`
   - `db/migrations/` — numbered migration files
@@ -47,15 +46,9 @@ npm run dev:web                          # Start Vite dev server (localhost:5173
 npm run test:editor                      # Vitest for @editor/core
 npm run build:editor                     # Vite lib build for @editor/core (outputs to packages/editor/dist/)
 
-npm run ui:check                         # Playwright e2e (spawns backend + web as needed)
-npm run ui:debug                         # Playwright with visible browser
-npm run ui:clean                         # Clear artifacts/playwright/screenshots/
-
 python -m pytest app/tests/ -v           # Backend tests
 bandit -r app/                           # Security scan
 ```
-
-Screenshots land in `artifacts/playwright/screenshots/`.
 
 ## Key Conventions
 

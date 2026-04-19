@@ -122,8 +122,10 @@ export function isValidHttpUrl(value) {
 }
 
 // Prompt the user for an http(s) URL via `window.prompt`. Re-prompts exactly
-// once on an invalid answer (per Phase 5 spec) and aborts silently on the
-// second invalid answer or on cancel. Returns the trimmed URL or null.
+// once on an invalid answer and aborts silently on the second invalid answer
+// or on cancel. Returns the trimmed URL or null. Messages are caller-supplied
+// so the package stays locale-neutral; see `toggleLink` / `insertImage` for
+// the default English strings used when no callback is provided.
 function promptForHttpUrl(message) {
   if (typeof window === 'undefined' || !window.prompt) return null
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -135,11 +137,50 @@ function promptForHttpUrl(message) {
   return null
 }
 
-// Insert or remove a link mark. If `href` is omitted and a view is provided,
-// prompts the user via `window.prompt` with Arabic copy and validates that
-// the URL starts with http:// or https://. This is a convenience command
-// for the toolbar; programmatic callers should pass an explicit href (or
-// use the ProseMirror `toggleMark` command directly).
+// Read the consumer-supplied link/image callbacks that `Editor.vue` stashes
+// on the view. We avoid stuffing this into EditorState because it is a
+// transient UI concern, not document state. Returns `null` when not set.
+function getRequestCallbacks(view) {
+  if (!view) return null
+  return view._editorCoreRequests || null
+}
+
+// Apply a link mark with `{href, title}` to the current selection range,
+// using the current state of the view. Used by the async callback path so
+// we can dispatch after an await against whatever state the view is in
+// then — not the state captured at command-dispatch time.
+function applyLinkAtCurrentSelection(view, markType, attrs) {
+  if (!view) return
+  const state = view.state
+  const { from, to, empty } = state.selection
+  if (empty) return
+  const tr = state.tr.addMark(from, to, markType.create(attrs))
+  view.dispatch(tr)
+}
+
+// Insert an image node at the current selection of the view. Same rationale
+// as `applyLinkAtCurrentSelection` — fresh state after await.
+function insertImageAtCurrentSelection(view, imageType, attrs) {
+  if (!view) return
+  const node = imageType.createAndFill(attrs)
+  if (!node) return
+  const state = view.state
+  view.dispatch(state.tr.replaceSelectionWith(node).scrollIntoView())
+}
+
+// Insert or remove a link mark.
+//
+// Resolution order when `href` is omitted:
+//   1. Consumer-provided `onRequestLink` callback (stashed on the view by
+//      `Editor.vue`) — lets the consumer render localized UI. Can return a
+//      Promise; when it resolves we apply against the view's then-current
+//      state. A `null` return is treated as "cancelled" and the command is
+//      a no-op. Validation still runs: an invalid `href` is dropped silently.
+//   2. Fallback `window.prompt` with neutral English strings. The package
+//      stays monolingual here on purpose — consumers who want Arabic UX
+//      should supply `onRequestLink`.
+//
+// Programmatic callers passing an explicit `href` bypass both paths.
 export function toggleLink(schema, href, title) {
   const markType = schema.marks.link
   if (!markType) return () => false
@@ -148,14 +189,53 @@ export function toggleLink(schema, href, title) {
     if (active) {
       return toggleMark(markType)(state, dispatch, view)
     }
-    let finalHref = href
-    if (finalHref == null) {
-      finalHref = promptForHttpUrl('أدخل رابط URL (http:// أو https://)')
-      if (!finalHref) return false
-    } else if (!isValidHttpUrl(finalHref)) {
-      // Explicit programmatic call with an invalid href — refuse silently.
-      return false
+
+    // Explicit programmatic call.
+    if (href != null) {
+      if (!isValidHttpUrl(href)) return false
+      return toggleMark(markType, { href, title: title || null })(
+        state,
+        dispatch,
+        view
+      )
     }
+
+    const callbacks = getRequestCallbacks(view)
+    if (callbacks && typeof callbacks.link === 'function') {
+      // Callback path: return `true` eagerly so the dispatcher treats this
+      // as a successful command (the same way a sync prompt would if the
+      // user accepted). The actual edit is dispatched asynchronously once
+      // the callback resolves, against the view's current state.
+      const existing = Array.from(state.selection.$from.marks()).find(
+        (m) => m.type === markType
+      )
+      const context = {
+        href: existing ? existing.attrs.href : undefined,
+        text: state.doc.textBetween(
+          state.selection.from,
+          state.selection.to,
+          ' '
+        ),
+      }
+      Promise.resolve(callbacks.link(context))
+        .then((result) => {
+          if (!result || typeof result !== 'object') return
+          const nextHref = result.href
+          if (!isValidHttpUrl(nextHref)) return
+          applyLinkAtCurrentSelection(view, markType, {
+            href: nextHref,
+            title: result.title || null,
+          })
+        })
+        .catch(() => {
+          // Swallow — a callback rejection should not crash the editor.
+        })
+      return true
+    }
+
+    // Default: synchronous `window.prompt` with neutral English strings.
+    const finalHref = promptForHttpUrl('Link URL')
+    if (!finalHref) return false
     return toggleMark(markType, { href: finalHref, title: title || null })(
       state,
       dispatch,
@@ -167,21 +247,52 @@ export function toggleLink(schema, href, title) {
 export function insertImage(schema, url, alt, title) {
   const imageType = schema.nodes.image
   if (!imageType) return () => false
-  return (state, dispatch) => {
-    let src = url
-    let finalAlt = alt
-    if (src == null) {
-      src = promptForHttpUrl('أدخل رابط الصورة (URL)')
-      if (!src) return false
-      if (finalAlt == null) {
-        if (typeof window !== 'undefined' && window.prompt) {
-          finalAlt = window.prompt('النص البديل للصورة') || ''
-        } else {
-          finalAlt = ''
-        }
+  return (state, dispatch, view) => {
+    // Explicit programmatic call.
+    if (url != null) {
+      if (!isValidHttpUrl(url)) return false
+      const node = imageType.createAndFill({
+        src: url,
+        alt: alt || null,
+        title: title || null,
+      })
+      if (!node) return false
+      if (dispatch) {
+        dispatch(state.tr.replaceSelectionWith(node).scrollIntoView())
       }
-    } else if (!isValidHttpUrl(src)) {
-      return false
+      return true
+    }
+
+    const callbacks = getRequestCallbacks(view)
+    if (callbacks && typeof callbacks.image === 'function') {
+      // Same async pattern as toggleLink above.
+      Promise.resolve(callbacks.image({}))
+        .then((result) => {
+          if (!result || typeof result !== 'object') return
+          const src = result.src
+          if (!isValidHttpUrl(src)) return
+          insertImageAtCurrentSelection(view, imageType, {
+            src,
+            alt: result.alt || null,
+            title: result.title || null,
+          })
+        })
+        .catch(() => {
+          // Swallow — a callback rejection should not crash the editor.
+        })
+      return true
+    }
+
+    // Default: synchronous `window.prompt` with neutral English strings.
+    const src = promptForHttpUrl('Image URL')
+    if (!src) return false
+    let finalAlt = alt
+    if (finalAlt == null) {
+      if (typeof window !== 'undefined' && window.prompt) {
+        finalAlt = window.prompt('Alt text (optional)') || ''
+      } else {
+        finalAlt = ''
+      }
     }
     const node = imageType.createAndFill({
       src,

@@ -1,6 +1,6 @@
 {
   "name": "@editor/core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Reusable Vue 3 + ProseMirror markdown editor with RTL support.",
@@ -15,12 +15,16 @@
   "files": [
     "dist",
     "src",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "vite build",
     "test": "vitest run",
     "test:watch": "vitest"
+  },
+  "dependencies": {
+    "markdown-it": "^14"
   },
   "peerDependencies": {
     "prosemirror-commands": "^1",

@@ -8,8 +8,6 @@ import {
   createParagraphNear,
   liftEmptyBlock,
   splitBlock,
-  toggleMark,
-  setBlockType,
 } from 'prosemirror-commands'
 import {
   splitListItem,
@@ -23,7 +21,7 @@ import {
   undoInputRule,
   InputRule,
 } from 'prosemirror-inputrules'
-import { Plugin } from 'prosemirror-state'
+import { Plugin, PluginKey } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
 import { undo, redo } from 'prosemirror-history'
 import {
@@ -241,13 +239,34 @@ function buildKeymap(schema) {
   return binds
 }
 
-// Placeholder plugin. Renders `placeholderText` as a CSS-visible hint
-// decoration inside the first empty block when the document is empty.
+// Public key so the editor can dispatch a meta transaction to update the
+// placeholder text in place without rebuilding the view (which would wipe
+// the undo stack).
+export const placeholderKey = new PluginKey('editorCorePlaceholder')
+
+// Placeholder plugin. Stores the current placeholder string in plugin state
+// and renders it as a CSS-visible hint decoration on the lone empty first
+// paragraph. Consumers update the text by dispatching a transaction with
+// `tr.setMeta(placeholderKey, newText)`; the plugin's `apply` reads the meta
+// and rewrites state, and the decoration function picks the new value up on
+// the next render cycle.
 function placeholderPlugin(text) {
   return new Plugin({
+    key: placeholderKey,
+    state: {
+      init() {
+        return text || ''
+      },
+      apply(tr, value) {
+        const meta = tr.getMeta(placeholderKey)
+        if (typeof meta === 'string') return meta
+        return value
+      },
+    },
     props: {
       decorations(state) {
-        if (!text) return null
+        const current = placeholderKey.getState(state)
+        if (!current) return null
         const { doc } = state
         if (doc.childCount !== 1) return null
         const firstChild = doc.firstChild
@@ -255,7 +274,7 @@ function placeholderPlugin(text) {
         if (firstChild.type.name !== 'paragraph') return null
         const placeholderDeco = Decoration.node(0, firstChild.nodeSize, {
           class: 'editor-placeholder',
-          'data-placeholder': text,
+          'data-placeholder': current,
         })
         return DecorationSet.create(doc, [placeholderDeco])
       },

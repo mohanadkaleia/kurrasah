@@ -38,7 +38,13 @@
 
 .editor-root .editor-content {
   outline: none;
-  min-height: 12rem;
+  /*
+   * `--editor-min-height` is a public CSS variable — consumers can set it on
+   * `.editor-root` (or any ancestor) to override the default. Keeping the
+   * fallback at 12rem preserves existing behavior for consumers who don't
+   * customize it.
+   */
+  min-height: var(--editor-min-height, 12rem);
   /*
    * ProseMirror emits a console warning unless the editable surface has
    * `white-space: pre-wrap` (or a compatible value). It also makes

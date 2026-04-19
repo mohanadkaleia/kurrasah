@@ -13,7 +13,7 @@ import { EditorView } from 'prosemirror-view'
 import Toolbar from './Toolbar.vue'
 import { buildSchema } from './schema.js'
 import { createMarkdownIO } from './markdown.js'
-import { buildPlugins } from './plugins.js'
+import { buildPlugins, placeholderKey } from './plugins.js'
 import { commandFactories } from './commands.js'
 
 // Public API:
@@ -26,16 +26,24 @@ import { commandFactories } from './commands.js'
 //   placeholder: string             placeholder text for empty doc
 //   readonly: boolean               disables editing
 //   toolbar: boolean | 'minimal'    'minimal' renders the default toolbar
+//   onRequestLink: (context) =>
+//       Promise<{href, title?} | null> | {href, title?} | null
+//                                   called when the link command needs a URL
+//   onRequestImage: (context) =>
+//       Promise<{src, alt?, title?} | null> | {src, alt?, title?} | null
+//                                   called when the image command needs a URL
 //
 // Events
 //   update:modelValue(md: string)
 //   change(md: string)
-//   ready(view: EditorView)
+//   ready(view: EditorView)         fires on initial mount AND on every
+//                                   internal view rebuild (e.g. when the
+//                                   images/links props toggle)
 //
 // Exposed (via defineExpose)
 //   focus()
 //   getMarkdown(): string
-//   setMarkdown(md: string): void
+//   setMarkdown(md: string): void   replaces the doc AND resets undo history
 //   execCommand(name: string, ...args): boolean
 
 const props = defineProps({
@@ -46,6 +54,8 @@ const props = defineProps({
   placeholder: { type: String, default: '' },
   readonly: { type: Boolean, default: false },
   toolbar: { type: [Boolean, String], default: 'minimal' },
+  onRequestLink: { type: Function, default: null },
+  onRequestImage: { type: Function, default: null },
 })
 
 const emit = defineEmits(['update:modelValue', 'change', 'ready'])
@@ -101,7 +111,25 @@ function createView() {
       }
     },
   })
+  // Stash consumer-supplied link/image callbacks on the view itself. The
+  // command factories in commands.js read from here when they need a URL
+  // and no explicit value was passed. Using a plain property (rather than
+  // plugin state) keeps this transient UI concern out of EditorState.
+  syncRequestCallbacks()
+  // Emit on initial mount AND on every rebuild so consumers that toggle
+  // `images`/`links` always have a live view reference. Consumers that
+  // only care about the first mount can ignore subsequent emits.
   emit('ready', view.value)
+}
+
+// Mirror `onRequestLink` / `onRequestImage` onto the current view. Re-run
+// whenever the view is rebuilt or the props change.
+function syncRequestCallbacks() {
+  if (!view.value) return
+  view.value._editorCoreRequests = {
+    link: props.onRequestLink || null,
+    image: props.onRequestImage || null,
+  }
 }
 
 function destroyView() {
@@ -144,9 +172,10 @@ function execCommand(name, ...args) {
   // Factories come in two shapes:
   //   (schema, ...args) -> command          e.g. toggleBold(schema)
   //   () -> command                         e.g. undo()
-  // We pass the schema as the first arg when the factory declares >= 1 param.
+  // `factory.length` is the declared (non-default) arity — zero for `undo`
+  // and `redo`, ≥1 for everything else — so it alone is a sufficient guard.
   let cmd
-  if (factory.length >= 1 && name !== 'undo' && name !== 'redo') {
+  if (factory.length >= 1) {
     cmd = factory(schema.value, ...args)
   } else {
     cmd = factory(...args)
@@ -185,14 +214,37 @@ watch(
 )
 
 // When feature flags flip (images/links), rebuild the view entirely. These
-// are not expected to toggle often, so a full rebuild is acceptable.
+// change the schema, so a full rebuild is the only correct answer. This
+// does reset the undo stack — which is documented behavior.
 watch(
-  () => [props.images, props.links, props.placeholder],
+  () => [props.images, props.links],
   () => {
     const md = getCurrentMarkdown()
     destroyView()
     createView()
     if (md) replaceDoc(md)
+  }
+)
+
+// Placeholder changes are decoration-only — no schema change, no rebuild.
+// Dispatch a meta transaction to the placeholder plugin instead, which
+// preserves the undo stack.
+watch(
+  () => props.placeholder,
+  (newValue) => {
+    if (!view.value) return
+    const tr = view.value.state.tr.setMeta(placeholderKey, newValue || '')
+    view.value.dispatch(tr)
+  }
+)
+
+// Keep the request-callback bag on the view in sync if the consumer swaps
+// handlers mid-session. Reactive props on Vue are picked up lazily — mirror
+// them explicitly so the commands see the current function reference.
+watch(
+  () => [props.onRequestLink, props.onRequestImage],
+  () => {
+    syncRequestCallbacks()
   }
 )
 

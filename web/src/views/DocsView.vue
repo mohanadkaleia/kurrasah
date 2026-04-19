@@ -227,10 +227,22 @@ const markdown = ref('# مرحبا')
                 <td class="px-4 py-2 border-b border-border">تعطيل التحرير (وضع القراءة فقط)</td>
               </tr>
               <tr>
-                <td class="px-4 py-2 font-mono" dir="ltr">toolbar</td>
-                <td class="px-4 py-2 font-mono" dir="ltr">boolean | 'minimal'</td>
-                <td class="px-4 py-2 font-mono" dir="ltr">'minimal'</td>
-                <td class="px-4 py-2">نمط شريط الأدوات المضمَّن</td>
+                <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">toolbar</td>
+                <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">boolean | 'minimal'</td>
+                <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">'minimal'</td>
+                <td class="px-4 py-2 border-b border-border">نمط شريط الأدوات المضمَّن</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">onRequestLink</td>
+                <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">(context) =&gt; Promise&lt;{href, title?} | null&gt; | null</td>
+                <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">null</td>
+                <td class="px-4 py-2 border-b border-border">دالة اختيارية تستدعيها الحزمة حين يحتاج أمر الرابط إلى <span class="font-mono" dir="ltr">URL</span>. أعِد <span class="font-mono" dir="ltr">null</span> للإلغاء. في حال عدم تمريرها، يعود المحرر إلى <span class="font-mono" dir="ltr">window.prompt</span> بالإنجليزية.</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2 font-mono" dir="ltr">onRequestImage</td>
+                <td class="px-4 py-2 font-mono" dir="ltr">(context) =&gt; Promise&lt;{src, alt?, title?} | null&gt; | null</td>
+                <td class="px-4 py-2 font-mono" dir="ltr">null</td>
+                <td class="px-4 py-2">مثل <span class="font-mono" dir="ltr">onRequestLink</span>، لكن لأمر إدراج الصور.</td>
               </tr>
             </tbody>
           </table>
@@ -265,7 +277,7 @@ const markdown = ref('# مرحبا')
               <tr>
                 <td class="px-4 py-2 font-mono" dir="ltr">ready</td>
                 <td class="px-4 py-2 font-mono" dir="ltr">view: EditorView</td>
-                <td class="px-4 py-2">يُطلق مرّة واحدة بعد تهيئة المحرر</td>
+                <td class="px-4 py-2">يُطلق عند التهيئة الأولى وبعد كل إعادة بناء داخلية (مثلاً عند تبديل <span class="font-mono" dir="ltr">images</span> أو <span class="font-mono" dir="ltr">links</span>) — المستهلكون الذين يحتفظون بمرجع طويل الأمد لـ <span class="font-mono" dir="ltr">EditorView</span> يجب أن يُحدّثوه مع كل إطلاق.</td>
               </tr>
             </tbody>
           </table>

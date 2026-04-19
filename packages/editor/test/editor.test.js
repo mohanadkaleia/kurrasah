@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { Editor } from '../src/index.js'
@@ -183,5 +183,287 @@ describe('<Editor> — placeholder visibility', () => {
     const placeholderNode = wrapper.find('.editor-mount [data-placeholder]')
     expect(placeholderNode.exists()).toBe(false)
     wrapper.unmount()
+  })
+
+  it('updates the placeholder decoration in place when the prop changes (no rebuild)', async () => {
+    const wrapper = mountEditor({ placeholder: 'first' })
+    await nextTick()
+    const viewBefore = wrapper.vm.view
+    expect(
+      wrapper.find('.editor-mount [data-placeholder]').attributes(
+        'data-placeholder'
+      )
+    ).toBe('first')
+
+    await wrapper.setProps({ placeholder: 'second' })
+    await nextTick()
+
+    // Same EditorView instance — the view was NOT rebuilt.
+    expect(wrapper.vm.view).toBe(viewBefore)
+    expect(
+      wrapper.find('.editor-mount [data-placeholder]').attributes(
+        'data-placeholder'
+      )
+    ).toBe('second')
+    wrapper.unmount()
+  })
+
+  it('preserves undo history across a placeholder prop change', async () => {
+    const wrapper = mountEditor({ placeholder: 'one', modelValue: '' })
+    await nextTick()
+    const view = wrapper.vm.view
+    const { TextSelection } = await import('prosemirror-state')
+
+    // Put the cursor at position 1 (inside the empty paragraph), type
+    // characters via a dispatch so history records them.
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, 1)
+      )
+    )
+    view.dispatch(view.state.tr.insertText('abc'))
+    await nextTick()
+    expect(wrapper.vm.getMarkdown()).toBe('abc')
+
+    // Change the placeholder. Under the old implementation this would
+    // rebuild the view and drop the history stack; now it dispatches a
+    // meta tr and leaves history intact.
+    await wrapper.setProps({ placeholder: 'two' })
+    await nextTick()
+    // Same view, so undo should still be able to revert `abc`.
+    expect(wrapper.vm.view).toBe(view)
+
+    wrapper.vm.execCommand('undo')
+    await nextTick()
+    expect(wrapper.vm.getMarkdown()).toBe('')
+    wrapper.unmount()
+  })
+})
+
+describe('<Editor> — ready re-emit on rebuild', () => {
+  it('emits ready again when `images` prop toggles (view rebuild)', async () => {
+    const wrapper = mountEditor({ images: true })
+    await nextTick()
+    const initialEmits = wrapper.emitted('ready')
+    expect(initialEmits.length).toBe(1)
+    const firstView = initialEmits[0][0]
+
+    await wrapper.setProps({ images: false })
+    await nextTick()
+
+    const nextEmits = wrapper.emitted('ready')
+    expect(nextEmits.length).toBe(2)
+    const secondView = nextEmits[1][0]
+    expect(secondView).not.toBe(firstView)
+    // And the currently-live view matches the latest emit.
+    expect(wrapper.vm.view).toBe(secondView)
+    wrapper.unmount()
+  })
+
+  it('emits ready again when `links` prop toggles (view rebuild)', async () => {
+    const wrapper = mountEditor({ links: true })
+    await nextTick()
+    const initialEmits = wrapper.emitted('ready')
+    expect(initialEmits.length).toBe(1)
+
+    await wrapper.setProps({ links: false })
+    await nextTick()
+
+    const nextEmits = wrapper.emitted('ready')
+    expect(nextEmits.length).toBe(2)
+    expect(nextEmits[1][0]).not.toBe(initialEmits[0][0])
+    wrapper.unmount()
+  })
+
+  it('does NOT emit ready again when `placeholder` prop changes', async () => {
+    const wrapper = mountEditor({ placeholder: 'a' })
+    await nextTick()
+    const initialCount = wrapper.emitted('ready').length
+
+    await wrapper.setProps({ placeholder: 'b' })
+    await nextTick()
+
+    expect(wrapper.emitted('ready').length).toBe(initialCount)
+    wrapper.unmount()
+  })
+})
+
+describe('<Editor> — image renders loading="lazy"', () => {
+  it('renders `loading="lazy"` on the image node DOM', async () => {
+    const wrapper = mountEditor({
+      modelValue: '![alt](https://example.com/x.png)',
+    })
+    await nextTick()
+    const img = wrapper.find('.editor-mount img')
+    expect(img.exists()).toBe(true)
+    expect(img.attributes('loading')).toBe('lazy')
+    wrapper.unmount()
+  })
+})
+
+describe('<Editor> — onRequestLink callback', () => {
+  it('applies the link when callback returns {href}', async () => {
+    const onRequestLink = vi.fn(async () => ({ href: 'https://example.com' }))
+    const wrapper = mountEditor({
+      modelValue: 'click',
+      onRequestLink,
+    })
+    await nextTick()
+
+    // Select all text "click" (positions 1..6).
+    const view = wrapper.vm.view
+    const { TextSelection } = await import('prosemirror-state')
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 6))
+    )
+
+    wrapper.vm.execCommand('toggleLink')
+    // Callback is async — flush the microtask queue once.
+    await Promise.resolve()
+    await Promise.resolve()
+    await nextTick()
+
+    expect(onRequestLink).toHaveBeenCalledTimes(1)
+    expect(wrapper.vm.getMarkdown()).toContain(
+      '[click](https://example.com)'
+    )
+    wrapper.unmount()
+  })
+
+  it('does not apply a link when callback returns null', async () => {
+    const onRequestLink = vi.fn(async () => null)
+    const wrapper = mountEditor({
+      modelValue: 'click',
+      onRequestLink,
+    })
+    await nextTick()
+
+    const view = wrapper.vm.view
+    const { TextSelection } = await import('prosemirror-state')
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 6))
+    )
+
+    wrapper.vm.execCommand('toggleLink')
+    await Promise.resolve()
+    await Promise.resolve()
+    await nextTick()
+
+    expect(onRequestLink).toHaveBeenCalledTimes(1)
+    // No link mark in the serialized markdown.
+    expect(wrapper.vm.getMarkdown()).toBe('click')
+    wrapper.unmount()
+  })
+
+  it('rejects an invalid href returned by the callback', async () => {
+    const onRequestLink = vi.fn(async () => ({ href: 'javascript:alert(1)' }))
+    const wrapper = mountEditor({
+      modelValue: 'click',
+      onRequestLink,
+    })
+    await nextTick()
+
+    const view = wrapper.vm.view
+    const { TextSelection } = await import('prosemirror-state')
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 6))
+    )
+
+    wrapper.vm.execCommand('toggleLink')
+    await Promise.resolve()
+    await Promise.resolve()
+    await nextTick()
+
+    expect(wrapper.vm.getMarkdown()).toBe('click')
+    wrapper.unmount()
+  })
+
+  it('falls back to window.prompt when no callback is provided', async () => {
+    const promptSpy = vi
+      .spyOn(window, 'prompt')
+      .mockReturnValue('https://fallback.example')
+    try {
+      const wrapper = mountEditor({ modelValue: 'click' })
+      await nextTick()
+
+      const view = wrapper.vm.view
+      const { TextSelection } = await import('prosemirror-state')
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 6))
+      )
+
+      wrapper.vm.execCommand('toggleLink')
+      await nextTick()
+
+      // Neutral English string — no Arabic in the package default.
+      expect(promptSpy).toHaveBeenCalledWith('Link URL')
+      expect(wrapper.vm.getMarkdown()).toContain(
+        '[click](https://fallback.example)'
+      )
+      wrapper.unmount()
+    } finally {
+      promptSpy.mockRestore()
+    }
+  })
+})
+
+describe('<Editor> — onRequestImage callback', () => {
+  it('inserts the image when callback returns {src, alt}', async () => {
+    const onRequestImage = vi.fn(async () => ({
+      src: 'https://example.com/pic.png',
+      alt: 'a picture',
+    }))
+    const wrapper = mountEditor({ onRequestImage })
+    await nextTick()
+
+    wrapper.vm.execCommand('insertImage')
+    await Promise.resolve()
+    await Promise.resolve()
+    await nextTick()
+
+    expect(onRequestImage).toHaveBeenCalledTimes(1)
+    expect(wrapper.vm.getMarkdown()).toContain(
+      '![a picture](https://example.com/pic.png)'
+    )
+    wrapper.unmount()
+  })
+
+  it('does nothing when the image callback returns null', async () => {
+    const onRequestImage = vi.fn(async () => null)
+    const wrapper = mountEditor({ onRequestImage })
+    await nextTick()
+
+    wrapper.vm.execCommand('insertImage')
+    await Promise.resolve()
+    await Promise.resolve()
+    await nextTick()
+
+    expect(onRequestImage).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('.editor-mount img').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('falls back to window.prompt for URL + alt when no callback is provided', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt').mockImplementation((msg) => {
+      if (msg === 'Image URL') return 'https://example.com/fallback.png'
+      if (msg === 'Alt text (optional)') return 'fallback'
+      return null
+    })
+    try {
+      const wrapper = mountEditor()
+      await nextTick()
+
+      wrapper.vm.execCommand('insertImage')
+      await nextTick()
+
+      expect(promptSpy).toHaveBeenCalledWith('Image URL')
+      expect(promptSpy).toHaveBeenCalledWith('Alt text (optional)')
+      expect(wrapper.vm.getMarkdown()).toContain(
+        '![fallback](https://example.com/fallback.png)'
+      )
+      wrapper.unmount()
+    } finally {
+      promptSpy.mockRestore()
+    }
   })
 })

@@ -177,7 +177,12 @@ const nodes = {
     ],
     toDOM(node) {
       const { src, alt, title } = node.attrs
-      return ['img', { src, alt, title }]
+      // `loading="lazy"` defers off-screen image loads — matters for
+      // long-form articles where the user may have many images below the
+      // fold. Browsers without native support (safe to ignore modern-only
+      // here since ProseMirror's own view requires a modern engine) treat
+      // the attribute as a no-op.
+      return ['img', { src, alt, title, loading: 'lazy' }]
     },
   },
 

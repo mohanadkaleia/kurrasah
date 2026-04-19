@@ -20,7 +20,7 @@
  */
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Editor } from '@editor/core'
+import { Editor, isValidHttpUrl } from '@editor/core'
 import '@editor/core/style.css'
 
 import FloatingToolbar from '../components/editor/FloatingToolbar.vue'
@@ -191,6 +191,39 @@ function onEditorReady() {
   editorExposed.value = editorRef.value
 }
 
+// --- Link / image UI hooks --------------------------------------------------
+//
+// `@editor/core` defaults to English `window.prompt` strings when no callback
+// is provided. Kurras is an Arabic-first product, so we localize the prompts
+// here — i18n belongs in the consumer, not in the package. Reuses the
+// package's own URL validator to keep behavior consistent with the default.
+
+function promptArabicHttpUrl(message) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const answer = window.prompt(message)
+    if (answer == null) return null
+    const trimmed = answer.trim()
+    if (isValidHttpUrl(trimmed)) return trimmed
+  }
+  return null
+}
+
+function onRequestLink({ href } = {}) {
+  const initial = href || ''
+  const answer = window.prompt('أدخل رابط URL (http:// أو https://)', initial)
+  if (answer == null) return null
+  const trimmed = answer.trim()
+  if (!isValidHttpUrl(trimmed)) return null
+  return { href: trimmed }
+}
+
+function onRequestImage() {
+  const src = promptArabicHttpUrl('أدخل رابط الصورة (URL)')
+  if (!src) return null
+  const alt = window.prompt('النص البديل للصورة') || ''
+  return { src, alt }
+}
+
 function onVersionRestored(doc) {
   if (!doc) return
   suppressAutoSave.value = true
@@ -288,6 +321,8 @@ onBeforeUnmount(() => {
           :links="true"
           placeholder="ابدأ الكتابة..."
           :toolbar="false"
+          :on-request-link="onRequestLink"
+          :on-request-image="onRequestImage"
           @change="onContentChange"
           @ready="onEditorReady"
         />

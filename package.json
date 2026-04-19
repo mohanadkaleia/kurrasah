@@ -10,12 +10,6 @@
     "dev:web": "npm run dev -w web",
     "dev:api": "python -m app.main",
     "build:editor": "npm run build -w @editor/core",
-    "test:editor": "npm run test -w @editor/core",
-    "ui:check": "npx playwright test",
-    "ui:debug": "npx playwright test --headed",
-    "ui:clean": "rm -rf artifacts/playwright/screenshots/*"
-  },
-  "devDependencies": {
-    "@playwright/test": "^1.59.1"
+    "test:editor": "npm run test -w @editor/core"
   }
 }

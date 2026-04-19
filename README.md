@@ -19,8 +19,7 @@ The editor package (`@editor/core`) is the deliverable — backend-agnostic, mar
 ├── packages/editor/      # @editor/core — the reusable package
 ├── web/                  # Vue 3 demo consumer (single-document surface)
 ├── app/                  # Flask REST backend (demo storage)
-├── db/                   # SQLite + migrations
-└── e2e/                  # Playwright specs (not actively maintained)
+└── db/                   # SQLite + migrations
 ```
 
 Monorepo via npm workspaces.
@@ -78,7 +77,7 @@ The package is currently workspace-private. When it stabilizes around a second r
 
 ## Status
 
-- Package: functional v1, 78 vitest tests passing.
+- Package: v0.1.0, 91 vitest tests passing.
 - Backend: 8 REST endpoints, 63 pytest tests passing, bandit clean.
 - Demo app: single-document editor surface with versions, import/export, floating toolbar.
 
