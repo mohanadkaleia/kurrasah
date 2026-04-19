@@ -98,6 +98,20 @@ export interface EditorProps {
    * renders the editor surface only. Default `'minimal'`.
    */
   toolbar?: boolean | 'minimal'
+  /**
+   * Trigger character for the slash (block-type) menu. Default `'@'`.
+   * `'/'` is intentionally NOT the default because it maps to `ظ` on the
+   * standard Arabic keyboard, which would collide with natural typing.
+   * Changing this prop rebuilds the view.
+   */
+  slashTrigger?: string
+  /**
+   * Enable the slash menu. Default `true`. When `false`, the trigger
+   * character is inert and `Mod-K` falls through to its `toggleLink`
+   * binding (if a link mark is present). Changing this prop rebuilds
+   * the view.
+   */
+  slashEnabled?: boolean
   /** Optional hook for link UI. See `LinkCallback`. */
   onRequestLink?: LinkCallback | null
   /** Optional hook for image UI. See `ImageCallback`. */

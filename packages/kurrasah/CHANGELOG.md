@@ -9,6 +9,55 @@ Each release lists changes under some of these subsections:
 - **Fixed** — bug fixes.
 - **Notes** — behaviors worth surfacing but not strictly actionable.
 
+## [0.3.1] — 2026-04-19
+
+### Fixed
+- Slash menu popover now positions correctly under `dir="rtl"`. The
+  previous release used `inset-inline-start: <viewport-left>px`, which
+  in RTL measures from the right edge of the viewport — the menu
+  landed far off to the side instead of next to the cursor. Switched
+  to physical `left` / `top`.
+- Arrow-key navigation now scrolls the selected item into view when it
+  would otherwise fall outside the popover's scroll window.
+- Heading (H1/H2/H3) and ordered-list icons no longer render as
+  garbled glyphs. SVG `<text>` elements inherit bidi from their
+  ancestor, so "H1" inside an RTL document rendered with mirrored
+  digits or font fallback. The heading icon is now a plain HTML span
+  with `dir="ltr"`, and the ordered-list icon uses SVG paths only.
+
+### Added
+- **Slash command menu** — a Notion-style block-type picker that opens
+  when the user types the trigger character (default `@`) at a valid
+  position, or presses `Cmd/Ctrl+K` with an empty selection. Nine items:
+  Paragraph, Heading 1–3, Bullet list, Ordered list, Blockquote, Code
+  block, Image. Filter-as-you-type with English **and** Arabic aliases
+  (`@h1` and `@عنوان` both match). Keyboard-first navigation (ArrowUp /
+  ArrowDown / Enter / Escape) plus click-outside dismissal.
+- New prop `slashTrigger: string` (default `'@'`) — override the trigger
+  character. Changing this prop rebuilds the view.
+- New prop `slashEnabled: boolean` (default `true`) — turn the menu off.
+  When disabled, `Mod-K` falls through to `toggleLink` for all selection
+  states. Changing this prop rebuilds the view.
+
+### Changed
+- `Mod-K` behavior is now selection-sensitive: with a non-empty selection
+  it still toggles the link mark (pre-existing behavior); with an empty
+  selection, it opens the slash menu's command-palette path. Consumers
+  who relied on `Mod-K` triggering the link prompt on an empty selection
+  will find it no longer does — there was nothing to wrap anyway, so the
+  previous behavior was effectively a no-op prompt.
+
+### Notes
+- `@` was chosen over `/` because `/` maps to `ظ` on the standard Arabic
+  keyboard layout and would collide with natural typing.
+- The slash menu is mounted via `<Teleport to="body">`, so its popover
+  escapes `overflow: hidden` ancestors. Consumers styling the popover
+  must target `.kurrasah-slash-menu` globally (outside `.editor-root`).
+- The plugin, item catalog, and plugin key are intentionally **not**
+  re-exported from the package index in v0.3 — they're internal so we can
+  evolve them without a breaking change. If you need to customize the
+  item list, open an issue.
+
 ## [0.2.2] — 2026-04-19
 
 ### Changed

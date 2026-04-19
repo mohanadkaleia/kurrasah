@@ -48,6 +48,8 @@ const props: EditorProps = {
   placeholder: 'اكتب هنا',
   readonly: false,
   toolbar: 'minimal',
+  slashTrigger: '@',
+  slashEnabled: true,
   onRequestLink: async ({ href, text }): Promise<LinkResult | null> => {
     if (!text) return null
     return { href: href ?? 'https://example.com' }
@@ -57,6 +59,18 @@ const props: EditorProps = {
     alt: 'alt',
   }),
 }
+
+// Slash-menu props are both optional strings / booleans.
+const _slashDefaults: EditorProps = {}
+const _slashOnlyTrigger: EditorProps = { slashTrigger: '/' }
+const _slashOnlyEnabled: EditorProps = { slashEnabled: false }
+// @ts-expect-error — slashTrigger must be a string.
+const _slashBadTrigger: EditorProps = { slashTrigger: 42 }
+// @ts-expect-error — slashEnabled must be a boolean.
+const _slashBadEnabled: EditorProps = { slashEnabled: 'yes' }
+void _slashDefaults
+void _slashOnlyTrigger
+void _slashOnlyEnabled
 
 // `dir` must be one of the string literals.
 // @ts-expect-error — 'diagonal' is not a valid writing direction.

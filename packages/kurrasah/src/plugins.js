@@ -35,6 +35,7 @@ import {
   toggleLink,
 } from './commands.js'
 import { MAX_HEADING_LEVEL } from './schema.js'
+import { slashMenuPlugin, slashMenuKey, SLASH_MENU_META } from './slashMenuPlugin.js'
 
 // Build an input rule for inline marks like `**bold**`, `*italic*`,
 // and `` `code` ``. The regex must match the closing delimiter typed by
@@ -170,9 +171,32 @@ function buildKeymap(schema) {
   if (schema.marks.code) {
     bind('Mod-`', toggleCode(schema))
   }
+  // `Mod-k` plays two roles depending on whether the selection is empty:
+  //   - Non-empty selection  → toggle a link mark (pre-existing behavior).
+  //   - Empty selection      → open the slash menu's command-palette path.
+  // The slash plugin's state carries the enabled flag, so when a consumer
+  // sets `slashEnabled: false` the first branch is a no-op and `Mod-k`
+  // still falls through to `toggleLink` for link-wrapping.
+  const slashCommandPaletteCmd = (state, dispatch) => {
+    const sm = slashMenuKey.getState(state)
+    if (!sm || !sm.enabled) return false
+    if (!state.selection.empty) return false
+    if (dispatch) {
+      dispatch(
+        state.tr.setMeta(slashMenuKey, {
+          action: SLASH_MENU_META.OPEN_COMMAND_PALETTE,
+        })
+      )
+    }
+    return true
+  }
   if (schema.marks.link) {
-    bind('Mod-k', toggleLink(schema))
-    bind('Mod-K', toggleLink(schema))
+    const link = toggleLink(schema)
+    bind('Mod-k', chainCommands(slashCommandPaletteCmd, link))
+    bind('Mod-K', chainCommands(slashCommandPaletteCmd, link))
+  } else {
+    bind('Mod-k', slashCommandPaletteCmd)
+    bind('Mod-K', slashCommandPaletteCmd)
   }
 
   if (schema.nodes.blockquote) {
@@ -284,10 +308,17 @@ function placeholderPlugin(text) {
 
 // Build the plugin list for an editor. `readonly` returns a minimal set
 // (no keymap, no input rules, no history) because the view is not editable.
+//
+// Slash-menu flags (`slashEnabled`, `slashTrigger`) are threaded through to
+// the plugin so `<Editor>` can pass them down without knowing about the
+// plugin's internals. Readonly mode never installs the slash plugin — the
+// user can't type a trigger and the command-palette keymap isn't registered.
 export function buildPlugins({
   schema,
   placeholder = '',
   readonly = false,
+  slashEnabled = true,
+  slashTrigger = '@',
 } = {}) {
   if (readonly) {
     const plugins = []
@@ -301,5 +332,6 @@ export function buildPlugins({
     keymap(baseKeymap),
     history(),
     placeholderPlugin(placeholder),
+    slashMenuPlugin({ trigger: slashTrigger, enabled: slashEnabled }),
   ]
 }

@@ -34,6 +34,8 @@ import 'kurrasah/style.css'
 | `placeholder` | `string` | `''` | Shown when doc is empty. Updates in place — does not reset undo. |
 | `readonly` | `boolean` | `false` | Disable editing |
 | `toolbar` | `boolean \| 'minimal'` | `'minimal'` | Toolbar mode |
+| `slashTrigger` | `string` | `'@'` | Trigger character for the slash (block-type) menu. See [Slash command menu](#slash-command-menu). |
+| `slashEnabled` | `boolean` | `true` | Enable the slash menu. |
 | `onRequestLink` | `(context) => Promise<{href, title?} \| null> \| {href, title?} \| null` | `null` | Optional hook called when the link command needs a URL. Return `null` to cancel. See [Link / image UI hooks](#link--image-ui-hooks). |
 | `onRequestImage` | `(context) => Promise<{src, alt?, title?} \| null> \| {src, alt?, title?} \| null` | `null` | Same, for images. |
 
@@ -62,7 +64,7 @@ Marks: strong, em, link, inline code.
 | Mod-B | Toggle bold |
 | Mod-I | Toggle italic |
 | Mod-` | Toggle inline code |
-| Mod-K | Insert/remove link (prompts for URL) |
+| Mod-K | Non-empty selection: insert/remove link (prompts for URL). Empty selection: open the [slash command menu](#slash-command-menu). |
 | Shift-Ctrl-1/2/3 | Heading level 1/2/3 |
 | Ctrl-> | Blockquote |
 | Shift-Ctrl-8 | Bullet list |
@@ -81,6 +83,60 @@ Marks: strong, em, link, inline code.
 - `**x**` → bold
 - `*x*` → italic
 - `` `x` `` → inline code
+
+## Slash command menu
+
+A Notion-style block-type picker surfaces when the user types the trigger
+character (default `@`) at a valid position, or presses `Cmd/Ctrl+K` with
+an empty selection.
+
+**Why `@` rather than `/`?** On the standard Arabic keyboard layout, `/`
+maps to `ظ` — using it as the trigger would collide with natural typing.
+`@` sits on the same key in both Arabic and Latin layouts (`Shift+2`) and
+is not otherwise used in Arabic prose. Consumers who prefer a different
+character can pass `slashTrigger`.
+
+### Trigger rules
+
+- Typing the trigger character activates the menu when:
+  - The cursor is at the start of an empty block, or
+  - The character immediately before the trigger is whitespace
+    (so `user@example.com` does NOT open the menu).
+- The menu is inactive inside code blocks (`@` is valid code content).
+- As the user types after the trigger, the query updates live. Typing a
+  space closes the menu.
+- `Cmd/Ctrl+K` with an empty selection opens the menu at the current cursor
+  position, without inserting any trigger character. With a non-empty
+  selection, `Mod-K` still toggles the link mark (pre-existing behavior).
+
+### Items
+
+The menu ships nine block-type items in this order, each with English and
+Arabic aliases so `@h1` and `@عنوان` both match:
+
+| Item | Aliases |
+|---|---|
+| Paragraph | `paragraph`, `p`, `text`, `فقرة`, `نص` |
+| Heading 1 | `heading 1`, `h1`, `عنوان 1`, `ترويسة 1` |
+| Heading 2 | `heading 2`, `h2`, `عنوان 2`, `ترويسة 2` |
+| Heading 3 | `heading 3`, `h3`, `عنوان 3`, `ترويسة 3` |
+| Bullet list | `bullet`, `ul`, `unordered`, `قائمة`, `قائمة نقطية` |
+| Ordered list | `ordered`, `ol`, `numbered`, `قائمة مرقمة` |
+| Blockquote | `quote`, `blockquote`, `اقتباس` |
+| Code block | `code`, `pre`, `كود`, `شيفرة` |
+| Image | `image`, `img`, `picture`, `صورة` |
+
+Filter matches are case-insensitive substrings against the label + aliases.
+
+### Dismissal
+
+- `Escape` closes the menu and leaves any typed `@query` text in the doc.
+- Clicking outside the popover closes the menu.
+- `ArrowUp` / `ArrowDown` navigate items; `Enter` applies the selected item,
+  which (on the `@`-trigger path) also removes the `@query` range before
+  running the command.
+- If the filtered result set is empty, the popover is hidden; it reappears
+  as soon as the query changes to match.
 
 ## Link / image UI hooks
 

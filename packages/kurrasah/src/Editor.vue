@@ -11,6 +11,7 @@ import {
 import { EditorState } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
 import Toolbar from './Toolbar.vue'
+import SlashMenu from './SlashMenu.vue'
 import { buildSchema } from './schema.js'
 import { createMarkdownIO } from './markdown.js'
 import { buildPlugins, placeholderKey } from './plugins.js'
@@ -26,6 +27,10 @@ import { commandFactories } from './commands.js'
 //   placeholder: string             placeholder text for empty doc
 //   readonly: boolean               disables editing
 //   toolbar: boolean | 'minimal'    'minimal' renders the default toolbar
+//   slashTrigger: string            trigger character for the slash menu
+//                                   (default '@' — '/' maps to 'ظ' on the
+//                                   standard Arabic keyboard).
+//   slashEnabled: boolean           enable the slash menu (default true)
 //   onRequestLink: (context) =>
 //       Promise<{href, title?} | null> | {href, title?} | null
 //                                   called when the link command needs a URL
@@ -54,6 +59,8 @@ const props = defineProps({
   placeholder: { type: String, default: '' },
   readonly: { type: Boolean, default: false },
   toolbar: { type: [Boolean, String], default: 'minimal' },
+  slashTrigger: { type: String, default: '@' },
+  slashEnabled: { type: Boolean, default: true },
   onRequestLink: { type: Function, default: null },
   onRequestImage: { type: Function, default: null },
 })
@@ -69,7 +76,9 @@ const view = shallowRef(null)
 const schema = shallowRef(null)
 const markdownIO = shallowRef(null)
 // Tracks a revision counter — used by the toolbar to recompute active
-// states without touching PM internals from outside the component.
+// states without touching PM internals from outside the component. The
+// slash-menu popover also watches this value so it can re-read plugin
+// state on every transaction.
 const revision = ref(0)
 
 // Internal flag: true while we're applying an external `modelValue` to the
@@ -92,6 +101,8 @@ function createView() {
       schema: schema.value,
       placeholder: props.placeholder,
       readonly: props.readonly,
+      slashEnabled: props.slashEnabled,
+      slashTrigger: props.slashTrigger,
     }),
   })
   view.value = new EditorView(mountEl.value, {
@@ -275,6 +286,21 @@ watch(
   }
 )
 
+// Slash-menu config changes (`slashTrigger`, `slashEnabled`) also require a
+// view rebuild, because they're baked into the plugin instance at
+// construction time. In practice consumers rarely toggle these mid-session;
+// the rebuild is a worst-case correctness choice, matching how `images` and
+// `links` are handled.
+watch(
+  () => [props.slashTrigger, props.slashEnabled],
+  () => {
+    const md = getCurrentMarkdown()
+    destroyView()
+    createView()
+    if (md) replaceDoc(md)
+  }
+)
+
 // Placeholder changes are decoration-only — no schema change, no rebuild.
 // Dispatch a meta transaction to the placeholder plugin instead, which
 // preserves the undo stack.
@@ -326,5 +352,11 @@ const showToolbar = computed(
   <div ref="rootEl" class="editor-root" :dir="dir">
     <Toolbar v-if="showToolbar" :editor="exposed" :dir="dir" />
     <div ref="mountEl" class="editor-mount" :data-revision="revision"></div>
+    <SlashMenu
+      v-if="slashEnabled"
+      :view="view"
+      :schema="schema"
+      :revision="revision"
+    />
   </div>
 </template>
