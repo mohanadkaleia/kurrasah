@@ -8,6 +8,10 @@ Standalone package — no backend coupling, no fetch, no storage. Takes markdown
 
 Within this monorepo, consumed via npm workspaces as `@editor/core`. Outside this repo, not yet published.
 
+## TypeScript
+
+Hand-written type declarations ship in `types/index.d.ts`. Consumers that use TypeScript get full autocomplete and type-checking for props, events, callbacks, and exposed methods, without needing to configure anything.
+
 ## Usage
 
 ```js
@@ -116,6 +120,10 @@ Callbacks may return a value synchronously or as a Promise. Returning `null` (or
 
 `isValidHttpUrl` is exported from `@editor/core` for consumer-side reuse.
 
+**`context.href` on mixed selections.** When the selection spans characters that carry the link mark plus characters that don't, `context.href` reflects only the mark at the start of the selection and ignores the rest. Consumers that need to detect mixed-state selections should inspect the full range themselves.
+
+**Callback errors.** Rejections from `onRequestLink` / `onRequestImage` are caught so the editor doesn't crash. They are surfaced via `console.error` with a `[@editor/core]` prefix; check the console if your callback is silently not applying.
+
 ## Styling hooks
 
 A subset of CSS custom properties can be overridden on `.editor-root` (or any ancestor):
@@ -135,6 +143,8 @@ A subset of CSS custom properties can be overridden on `.editor-root` (or any an
 - **Setting `modelValue` externally or calling `setMarkdown(md)` replaces the document and resets undo history.** User edits through the UI preserve undo as expected.
 - **Toggling `images` or `links` rebuilds the underlying `EditorView`.** This is needed because those props change the schema. The undo stack is reset and a new view is emitted via the `ready` event. Consumers should treat these as infrequent configuration changes, not per-interaction state.
 - **Changing the `placeholder` prop does not rebuild the view** and does not affect the undo stack. The placeholder decoration updates in place.
+- **`execCommand` returns `true` on the async link/image path as soon as the callback is dispatched, not when the edit lands.** For sync commands (`toggleBold` etc.) the boolean is "edit applied". For `toggleLink` / `insertImage` when a consumer callback is active, the boolean is "request accepted"; the edit is committed later when the callback resolves, or skipped silently if the consumer returns `null` / an invalid URL. If you need to await the edit, hold a reference to the editor view and observe the next transaction.
+- **`focus()` is not called after an async link/image command.** The consumer modal owns focus until the callback resolves. Sync commands still auto-focus as before.
 
 ## Bundling
 

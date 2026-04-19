@@ -166,6 +166,14 @@ function getCurrentMarkdown() {
 
 // Named-command dispatcher. Looks the command up by name, binds it to the
 // current schema if necessary, and runs it through the view.
+//
+// Note on the return value: `ok` here means "the command accepted the
+// request", NOT "the edit landed". For sync paths (toggleBold etc.) the
+// two are identical. For async paths (toggleLink / insertImage when a
+// consumer callback is active) `ok` is `true` the moment the callback is
+// dispatched — the actual edit lands later when the callback resolves,
+// or never if the consumer cancels / returns an invalid URL. Documented
+// in the README under "Behavioral notes".
 function execCommand(name, ...args) {
   const factory = commandFactories[name]
   if (!factory || !view.value) return false
@@ -182,7 +190,12 @@ function execCommand(name, ...args) {
   }
   const state = view.value.state
   const ok = cmd(state, view.value.dispatch, view.value)
-  view.value.focus()
+  // Async command paths (link/image with a consumer callback) stamp the
+  // view so the dispatcher knows to skip the auto-focus. Otherwise the
+  // editor steals focus from the consumer's modal the instant it opens.
+  const pendingAsync = view.value._editorCoreAsyncPending === true
+  view.value._editorCoreAsyncPending = false
+  if (!pendingAsync) view.value.focus()
   return ok
 }
 

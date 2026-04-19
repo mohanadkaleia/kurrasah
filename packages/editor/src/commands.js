@@ -206,6 +206,16 @@ export function toggleLink(schema, href, title) {
       // as a successful command (the same way a sync prompt would if the
       // user accepted). The actual edit is dispatched asynchronously once
       // the callback resolves, against the view's current state.
+      //
+      // `context.href` is taken from the start of the selection only
+      // (`$from.marks()`). For a mixed selection where some characters
+      // carry the link mark and some don't, this surfaces the first run's
+      // href and ignores the rest — consumers that care about mixed state
+      // should compare against the full range themselves.
+      //
+      // Stamp the view so the dispatcher skips its auto-focus call; the
+      // consumer modal needs focus.
+      view._editorCoreAsyncPending = true
       const existing = Array.from(state.selection.$from.marks()).find(
         (m) => m.type === markType
       )
@@ -227,8 +237,11 @@ export function toggleLink(schema, href, title) {
             title: result.title || null,
           })
         })
-        .catch(() => {
-          // Swallow — a callback rejection should not crash the editor.
+        .catch((err) => {
+          // Don't crash the editor, but surface for debugging. Silent
+          // swallowing of callback errors is a debugging nightmare.
+          // eslint-disable-next-line no-console
+          console.error('[@editor/core] onRequestLink callback failed:', err)
         })
       return true
     }
@@ -265,7 +278,9 @@ export function insertImage(schema, url, alt, title) {
 
     const callbacks = getRequestCallbacks(view)
     if (callbacks && typeof callbacks.image === 'function') {
-      // Same async pattern as toggleLink above.
+      // Same async pattern as toggleLink above. Stamp the view so the
+      // dispatcher skips its auto-focus call; consumer modal needs focus.
+      view._editorCoreAsyncPending = true
       Promise.resolve(callbacks.image({}))
         .then((result) => {
           if (!result || typeof result !== 'object') return
@@ -277,8 +292,10 @@ export function insertImage(schema, url, alt, title) {
             title: result.title || null,
           })
         })
-        .catch(() => {
-          // Swallow — a callback rejection should not crash the editor.
+        .catch((err) => {
+          // Don't crash the editor, but surface for debugging.
+          // eslint-disable-next-line no-console
+          console.error('[@editor/core] onRequestImage callback failed:', err)
         })
       return true
     }

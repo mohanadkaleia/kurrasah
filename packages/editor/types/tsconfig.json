@@ -1,0 +1,16 @@
+{
+  "//": "Type-check config for the hand-written .d.ts + __check__.ts harness. Not part of the build.",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "allowJs": false,
+    "skipLibCheck": true,
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "preserve",
+    "types": []
+  },
+  "include": ["index.d.ts", "__check__.ts"]
+}
