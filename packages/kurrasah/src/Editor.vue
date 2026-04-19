@@ -100,6 +100,28 @@ function createView() {
     attributes: {
       class: 'editor-content',
     },
+    // Intercept link clicks so the editor is useful as a reader too:
+    //   - Readonly doc: any click on an <a> follows it in a new tab.
+    //   - Editable doc: Cmd/Ctrl-click follows; a plain click falls through
+    //     to ProseMirror so the cursor lands inside the link (matches
+    //     Notion / Google Docs). Without this, clicking a link in edit
+    //     mode appears to do nothing.
+    handleDOMEvents: {
+      click(_view, event) {
+        const target = event.target
+        if (!(target instanceof Element)) return false
+        const anchor = target.closest('a[href]')
+        if (!anchor) return false
+        const href = anchor.getAttribute('href')
+        if (!href) return false
+        const shouldNavigate =
+          props.readonly || event.metaKey || event.ctrlKey
+        if (!shouldNavigate) return false
+        event.preventDefault()
+        window.open(href, '_blank', 'noopener,noreferrer')
+        return true
+      },
+    },
     dispatchTransaction(tr) {
       const newState = view.value.state.apply(tr)
       view.value.updateState(newState)

@@ -467,3 +467,56 @@ describe('<Editor> — onRequestImage callback', () => {
     }
   })
 })
+
+describe('<Editor> — link clicks', () => {
+  let openSpy
+  beforeEach(() => {
+    openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+  })
+  afterEach(() => {
+    openSpy.mockRestore()
+  })
+
+  it('Cmd+click on a link opens it in a new tab', async () => {
+    const wrapper = mountEditor({
+      modelValue: '[site](https://example.com)',
+    })
+    await nextTick()
+    const anchor = wrapper.find('.editor-content a')
+    expect(anchor.exists()).toBe(true)
+    await anchor.trigger('click', { metaKey: true })
+    expect(openSpy).toHaveBeenCalledWith(
+      'https://example.com',
+      '_blank',
+      'noopener,noreferrer'
+    )
+    wrapper.unmount()
+  })
+
+  it('plain click on a link does NOT navigate in edit mode', async () => {
+    const wrapper = mountEditor({
+      modelValue: '[site](https://example.com)',
+    })
+    await nextTick()
+    const anchor = wrapper.find('.editor-content a')
+    await anchor.trigger('click')
+    expect(openSpy).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('plain click on a link DOES navigate in readonly mode', async () => {
+    const wrapper = mountEditor({
+      modelValue: '[site](https://example.com)',
+      readonly: true,
+    })
+    await nextTick()
+    const anchor = wrapper.find('.editor-content a')
+    await anchor.trigger('click')
+    expect(openSpy).toHaveBeenCalledWith(
+      'https://example.com',
+      '_blank',
+      'noopener,noreferrer'
+    )
+    wrapper.unmount()
+  })
+})

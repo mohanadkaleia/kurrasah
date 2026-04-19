@@ -9,6 +9,16 @@ Each release lists changes under some of these subsections:
 - **Fixed** — bug fixes.
 - **Notes** — behaviors worth surfacing but not strictly actionable.
 
+## [0.2.1] — 2026-04-19
+
+### Fixed
+- Clicking a link inside the editor now navigates. In **readonly** mode,
+  a plain click follows the link in a new tab. In **edit** mode, a
+  plain click still places the cursor (so the user can edit the link
+  text), and **Cmd/Ctrl+click** follows the link — the pattern used
+  by Notion and Google Docs. Previously, clicks inside links in edit
+  mode appeared to do nothing.
+
 ## [0.2.0] — 2026-04-19
 
 ### Breaking
