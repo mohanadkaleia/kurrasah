@@ -312,6 +312,13 @@ watch(selectedIndex, (i) => {
           @mouseenter="onItemMouseEnter(index)"
           @click="onItemClick(index)"
         >
+          <!--
+            Trusted-source-only: `item.icon` is a hard-coded string
+            assembled inside this package (see src/slashMenu.js).
+            If a future release exposes a consumer-supplied items
+            API, sanitize or switch to a slot + component map — do
+            NOT pipe untrusted HTML through v-html.
+          -->
           <span class="kurrasah-slash-menu-icon" v-html="item.icon"></span>
           <span class="kurrasah-slash-menu-labels">
             <span class="kurrasah-slash-menu-label">{{ item.label }}</span>

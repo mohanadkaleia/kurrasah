@@ -6,7 +6,11 @@ Standalone package — no backend coupling, no fetch, no storage. Takes markdown
 
 ## Install
 
-Within this monorepo, consumed via npm workspaces as `kurrasah`. Outside this repo, not yet published.
+```bash
+npm install kurrasah
+```
+
+Inside this monorepo, `web/` consumes the package via npm workspaces rather than the published artifact.
 
 ## TypeScript
 
@@ -149,6 +153,10 @@ pick a block type (heading, list, quote, code, image, etc.).
 
 Populated blocks (text, headings, lists, quotes, code) don't surface
 the button — keeping the reading surface calm.
+
+### A note on transit regions
+
+When the cursor moves from the hovered paragraph into an "unsupported region" — the whitespace between blocks, editor padding, a non-paragraph block — the overlay keeps the last hover alive so it doesn't flicker during mouse transit. An 80ms grace timer hides it only if the cursor stays off both the editor and the overlay. This can occasionally leave the `+` visible slightly longer than expected; it's intentional, not a bug.
 
 ### Keyboard-only users
 
