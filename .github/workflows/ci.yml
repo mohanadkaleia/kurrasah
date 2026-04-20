@@ -16,13 +16,17 @@ jobs:
           node-version: 20
           cache: npm
 
-      # `npm install` instead of `npm ci`: Vite 8 uses rolldown, which
-      # ships platform-specific native bindings as `optionalDependencies`.
-      # `npm ci` hits a long-standing npm bug (#4828) where optional
-      # deps from a foreign-platform lockfile are skipped — the Linux
-      # binding never installs, the build crashes with "Cannot find
-      # native binding". `npm install` resolves platform-appropriate
-      # optional deps on the fly.
+      # npm bug #4828: optional deps from a foreign-platform lockfile
+      # are skipped — even by `npm install` when the lockfile already
+      # exists. rolldown (Vite 8's bundler) and rollup (vitest's)
+      # both ship platform-specific native bindings as
+      # optionalDependencies, so CI on Linux against a macOS-generated
+      # lockfile crashes with "Cannot find native binding". The
+      # official workaround per the error message is to delete the
+      # lockfile and reinstall. We accept the mild non-determinism
+      # that comes with re-resolving on every run for CI only; the
+      # tree's semver ranges are tight enough in practice.
+      - run: rm -f package-lock.json
       - run: npm install --no-audit --no-fund
 
       # Run the package's vitest suite. Any failure blocks the workflow

@@ -25,11 +25,11 @@ jobs:
           node-version: 20
           cache: npm
 
-      # `npm install` instead of `npm ci`: Vite 8's rolldown bundler
-      # ships platform-specific bindings as `optionalDependencies`, and
-      # `npm ci` against a macOS-generated lockfile skips the Linux
-      # binding (npm bug #4828). `npm install` resolves the right one
-      # for the runner.
+      # npm bug #4828: optional deps (rolldown + rollup native
+      # bindings) from a macOS-generated lockfile are skipped on the
+      # Linux runner. `npm install` alone honors the broken lockfile;
+      # deleting it first is what the npm error message recommends.
+      - run: rm -f package-lock.json
       - run: npm install --no-audit --no-fund
 
       # Build the web demo with the GitHub Pages subpath baked in.
