@@ -8,7 +8,7 @@ import {
   computed,
   h,
 } from 'vue'
-import { EditorState } from 'prosemirror-state'
+import { EditorState, NodeSelection } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
 import Toolbar from './Toolbar.vue'
 import SlashMenu from './SlashMenu.vue'
@@ -138,6 +138,25 @@ function createView() {
     editable: () => !props.readonly,
     attributes: {
       class: 'editor-content',
+    },
+    // Clicking an image selects it as a NodeSelection so the user can
+    // press Backspace / Delete to remove it. Without this the click
+    // lands the caret next to the image (since `image` is inline) and
+    // there's no obvious way to delete the image other than dragging
+    // the cursor across it. Returns `true` to tell PM we handled the
+    // click and to skip the default text-cursor placement.
+    handleClickOn(view, _pos, node, nodePos) {
+      if (node.type.name !== 'image') return false
+      try {
+        view.dispatch(
+          view.state.tr.setSelection(
+            NodeSelection.create(view.state.doc, nodePos)
+          )
+        )
+      } catch {
+        return false
+      }
+      return true
     },
     dispatchTransaction(tr) {
       const newState = view.value.state.apply(tr)

@@ -207,6 +207,19 @@
 .editor-root .editor-content img {
   max-width: 100%;
   height: auto;
+  cursor: pointer;
+}
+
+/*
+ * Selected-image indicator. ProseMirror sets `ProseMirror-selectednode`
+ * on the rendered DOM of a NodeSelection; our `handleClickOn` makes a
+ * click on an `<img>` create that selection. The outline gives the user
+ * a visible "this is what Backspace will delete" affordance. Monochrome
+ * (currentColor) so it follows the editor's text tone.
+ */
+.editor-root .editor-content img.ProseMirror-selectednode {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }
 
 /*
