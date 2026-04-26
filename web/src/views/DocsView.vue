@@ -57,6 +57,13 @@ import 'kurrasah/style.css'
 export default { components: { Editor } }
 \`\`\`
 
+### جداول
+
+| الاسم | الوصف |
+|-------|-------|
+| أبجد  | حرف   |
+| هوّز  | حرف   |
+
 ![صورة توضيحية](https://placehold.co/600x240/f9fafb/111827?text=Editor)
 `)
 </script>
@@ -340,6 +347,7 @@ const markdown = ref('# مرحبا')
           <li>كتلة شيفرة (<span class="font-mono" dir="ltr">code block</span>)</li>
           <li>فاصل سطر (<span class="font-mono" dir="ltr">hard break</span>)</li>
           <li>صورة (<span class="font-mono" dir="ltr">image</span>)</li>
+          <li>جدول (<span class="font-mono" dir="ltr">table</span>) — بصياغة GFM، مع تنقّل بالسهام وتغيير عرض الأعمدة</li>
         </ul>
 
         <h3 class="text-[1.25rem] font-semibold text-text-primary mt-6 mb-2">
@@ -401,7 +409,10 @@ const markdown = ref('# مرحبا')
               </tr>
               <tr>
                 <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">Tab / Shift-Tab</td>
-                <td class="px-4 py-2 border-b border-border">إدخال / إخراج عنصر قائمة</td>
+                <td class="px-4 py-2 border-b border-border">
+                  إدخال / إخراج عنصر قائمة.
+                  <span class="block">داخل جدول: الانتقال إلى الخلية التالية / السابقة (يُنشئ صفاً جديداً إذا تجاوز الخلية الأخيرة).</span>
+                </td>
               </tr>
               <tr>
                 <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">Enter (×2) داخل كتلة الشيفرة</td>

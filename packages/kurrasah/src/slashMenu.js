@@ -102,6 +102,15 @@ export const DEFAULT_SLASH_ITEMS = [
     command: 'insertImage',
     args: [],
   },
+  {
+    id: 'table',
+    label: 'جدول',
+    description: 'جدول بأسطر وأعمدة',
+    aliases: ['table', 'جدول'],
+    icon: svgTable(),
+    command: 'insertTable',
+    args: [{ rows: 3, cols: 3, withHeader: true }],
+  },
 ]
 
 // Case-insensitive substring match against label + aliases joined by a space.
@@ -181,5 +190,17 @@ function svgImage() {
 <rect x="2" y="3" width="12" height="10" rx="1.5"/>
 <circle cx="6" cy="7" r="1.25"/>
 <path d="m2.5 12 3.5-3.5 3 3 2-2 4 4"/>
+</svg>`
+}
+
+function svgTable() {
+  // Small 2×2 grid. Outer rectangle plus one vertical + one horizontal
+  // interior line. Keeps parity with the other icons: 16×16 viewBox,
+  // `currentColor` stroke, no fill. Looks distinct at a glance versus
+  // the image icon (which has a rounded rect + diagonal path).
+  return `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<rect x="2" y="3" width="12" height="10" rx="1"/>
+<path d="M2 7h12"/>
+<path d="M8 3v10"/>
 </svg>`
 }

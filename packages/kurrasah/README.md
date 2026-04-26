@@ -57,9 +57,9 @@ import 'kurrasah/style.css'
 - `setMarkdown(md: string): void` — replaces the document and resets undo history (see behavioral notes).
 - `execCommand(name, ...args)` — dispatches a named command
 
-## Supported v1 content
+## Supported content
 
-Nodes: paragraph, heading (levels 1–3), bullet list, ordered list, list item, blockquote, code block, hard break, image.
+Nodes: paragraph, heading (levels 1–3), bullet list, ordered list, list item, blockquote, code block, hard break, image, **table** (with rows, header cells, and body cells).
 Marks: strong, em, link, inline code.
 
 ## Keyboard shortcuts
@@ -74,7 +74,7 @@ Marks: strong, em, link, inline code.
 | Ctrl-> | Blockquote |
 | Shift-Ctrl-8 | Bullet list |
 | Shift-Ctrl-9 | Ordered list |
-| Tab / Shift-Tab | Sink / lift list item |
+| Tab / Shift-Tab | Sink / lift list item. **Inside a table**: move to the next / previous cell (creates a new row when tabbing past the last cell of the last row). |
 | Mod-Enter | Exit code block |
 | Mod-Z / Shift-Mod-Z | Undo / redo |
 
@@ -88,6 +88,86 @@ Marks: strong, em, link, inline code.
 - `**x**` → bold
 - `*x*` → italic
 - `` `x` `` → inline code
+
+## Tables
+
+Tables use GitHub-flavored Markdown (GFM) pipe syntax and round-trip
+between the editor and markdown without information loss for the
+supported shapes.
+
+```md
+| الاسم | الوصف |
+|-------|-------|
+| أبجد  | حرف   |
+| هوّز  | حرف   |
+```
+
+### Inserting a table
+
+- Open the slash menu (`@` trigger or `Cmd/Ctrl+K`) and pick **جدول**
+  — this inserts a 3×3 table with a header row and places the cursor
+  in the first cell.
+- Or dispatch programmatically:
+
+  ```js
+  editor.execCommand('insertTable', { rows: 3, cols: 3, withHeader: true })
+  ```
+
+### Keyboard
+
+| Shortcut | Action |
+|---|---|
+| Tab | Move to the next cell. Tabbing past the final cell of the final row creates a new row. |
+| Shift-Tab | Move to the previous cell. |
+
+Tab / Shift-Tab fall through to the list-item sink / lift behaviour when
+the cursor is not inside a cell — the existing list shortcuts continue
+to work everywhere else.
+
+### Cell contents (v1)
+
+Cells hold **inline content only** — text with inline marks (bold,
+italic, inline code, links). This matches GFM's own constraints:
+
+- Paragraph breaks inside a cell collapse to a single space on
+  serialize. GFM has no syntax for an in-cell newline, and trying to
+  round-trip a multi-paragraph cell would lose information silently.
+- Block-level content — lists, blockquotes, code blocks, nested tables
+  — is **not** supported inside cells in v1. The schema rejects it, so
+  the slash menu's block-type items are effectively no-ops while the
+  cursor is inside a cell.
+
+### Column resizing
+
+Drag the right edge of a column to resize it. Widths are stored on each
+cell's `colwidth` attr and survive markdown round-trip as stable column
+widths on the rendered table (`<col>` elements inside a wrapping
+`<colgroup>`).
+
+### Header row
+
+GFM requires a header row. If a consumer programmatically builds a
+table whose first row is body cells, the serializer synthesizes an
+empty header row so the output re-parses cleanly:
+
+```md
+|   |   |
+|---|---|
+| a | b |
+| c | d |
+```
+
+### Roundtrip caveat
+
+Tables survive a parse → serialize → parse cycle with stable structure
+but not necessarily bit-for-bit identical markdown bytes:
+
+- Column separator widths are normalized to `----`.
+- Cell padding (extra spaces inside `| ... |`) is normalized.
+- Intra-cell whitespace runs are collapsed to a single space.
+
+The resulting markdown is a valid GFM table with the same logical
+content.
 
 ## Slash command menu
 
@@ -116,7 +196,7 @@ character can pass `slashTrigger`.
 
 ### Items
 
-The menu ships nine block-type items in this order, each with English and
+The menu ships ten block-type items in this order, each with English and
 Arabic aliases so `@h1` and `@عنوان` both match:
 
 | Item | Aliases |
@@ -130,6 +210,7 @@ Arabic aliases so `@h1` and `@عنوان` both match:
 | Blockquote | `quote`, `blockquote`, `اقتباس` |
 | Code block | `code`, `pre`, `كود`, `شيفرة` |
 | Image | `image`, `img`, `picture`, `صورة` |
+| Table | `table`, `جدول` |
 
 Filter matches are case-insensitive substrings against the label + aliases.
 

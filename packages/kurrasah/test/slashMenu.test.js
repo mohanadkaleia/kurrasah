@@ -43,8 +43,8 @@ function getSlashState(view) {
 // Tests ----------------------------------------------------------------
 
 describe('slashMenu — items catalog', () => {
-  it('exports 9 default items (paragraph, h1–h3, two lists, quote, code, image)', () => {
-    expect(DEFAULT_SLASH_ITEMS.length).toBe(9)
+  it('exports 10 default items (paragraph, h1–h3, two lists, quote, code, image, table)', () => {
+    expect(DEFAULT_SLASH_ITEMS.length).toBe(10)
     const ids = DEFAULT_SLASH_ITEMS.map((i) => i.id)
     expect(ids).toContain('paragraph')
     expect(ids).toContain('heading-1')
@@ -55,6 +55,7 @@ describe('slashMenu — items catalog', () => {
     expect(ids).toContain('blockquote')
     expect(ids).toContain('code-block')
     expect(ids).toContain('image')
+    expect(ids).toContain('table')
   })
 
   it('every item ships label + description + aliases + inline icon markup', () => {
@@ -76,8 +77,8 @@ describe('slashMenu — items catalog', () => {
 
 describe('filterSlashItems', () => {
   it('empty query returns the full list', () => {
-    expect(filterSlashItems(DEFAULT_SLASH_ITEMS, '')).toHaveLength(9)
-    expect(filterSlashItems(DEFAULT_SLASH_ITEMS, '   ')).toHaveLength(9)
+    expect(filterSlashItems(DEFAULT_SLASH_ITEMS, '')).toHaveLength(10)
+    expect(filterSlashItems(DEFAULT_SLASH_ITEMS, '   ')).toHaveLength(10)
   })
 
   it('matches English aliases case-insensitively', () => {

@@ -24,6 +24,7 @@ export default defineConfig({
         'prosemirror-keymap',
         'prosemirror-commands',
         'prosemirror-inputrules',
+        'prosemirror-tables',
       ],
       output: {
         assetFileNames: (asset) => {

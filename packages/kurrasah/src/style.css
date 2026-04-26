@@ -199,6 +199,101 @@
   height: auto;
 }
 
+/*
+ * Tables.
+ *
+ * RTL inheritance: `direction` cascades from `.editor-root` (which carries
+ * the consumer's `dir` attr). Cells read right-to-left under RTL without
+ * any physical `text-align` override. The default `text-align: start` is
+ * inherited from the editor root; we do not set it explicitly so we don't
+ * override a consumer's deliberate alignment.
+ *
+ * Column widths are driven by `prosemirror-tables` via inline <col> elements
+ * on a wrapping <colgroup>. The default rendering (before any user resize)
+ * spreads columns evenly. We set `table-layout: fixed` so the browser
+ * honours those widths instead of re-flowing based on content — otherwise
+ * a long cell forces the other columns to shrink and the resize handles
+ * end up in surprising places.
+ */
+/*
+ * `prosemirror-tables` wraps every table in a `<div class="tableWrapper">`
+ * via its `TableView` NodeView. We scroll that wrapper horizontally on
+ * overflow so very wide tables don't force the whole editor surface to
+ * expand. Margin-block matches the other block elements' rhythm.
+ */
+.editor-root .editor-content .tableWrapper {
+  overflow-x: auto;
+  margin-block: 0.75em;
+}
+
+.editor-root .editor-content table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  overflow: hidden;
+}
+
+.editor-root .editor-content th,
+.editor-root .editor-content td {
+  border: 1px solid var(--editor-border);
+  padding-block: 0.35em;
+  padding-inline: 0.6em;
+  vertical-align: top;
+  min-width: 4em;
+  position: relative;
+  /* Cells hold paragraphs — tighten the inner margins so the cell doesn't
+   * balloon on every paragraph's default 0.75em block margin. */
+}
+
+.editor-root .editor-content th > p,
+.editor-root .editor-content td > p {
+  margin-block: 0;
+  line-height: 1.5;
+}
+
+.editor-root .editor-content th {
+  background: var(--editor-code-bg);
+  font-weight: 600;
+}
+
+/*
+ * Selected cell(s) — `prosemirror-tables` decorates cells in a
+ * `CellSelection` with the `selectedCell` class. Upstream ships a chromatic
+ * blue `::after` overlay; we replace it with a neutral gray tint plus a
+ * `currentColor` outline so the aesthetic stays monochrome.
+ */
+.editor-root .editor-content .selectedCell {
+  background: rgba(0, 0, 0, 0.04);
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+
+/*
+ * Column-resize handle. `prosemirror-tables` adds a <div class="column-resize-handle">
+ * to the cell on the right edge (physical right, regardless of document
+ * direction — the handle sits on the visual cell-end). Under RTL the
+ * "visual right" of a cell IS the end of that cell, which is exactly
+ * where a resize grip belongs, so physical right is correct here.
+ *
+ * Keep it subtle — a 2px vertical strip that only shows up while the
+ * user is dragging (prosemirror-tables toggles a class on the editor
+ * during resize).
+ */
+.editor-root .editor-content .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background-color: rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+  z-index: 20;
+}
+
+.editor-root .editor-content.resize-cursor {
+  cursor: col-resize;
+}
+
 /* Placeholder — rendered via decoration in plugins.js */
 .editor-root .editor-placeholder::before {
   content: attr(data-placeholder);
@@ -398,6 +493,14 @@
   opacity: 0;
   transition: opacity 150ms ease-out;
   pointer-events: auto;
+  /*
+   * The positioning math in `blockControls.js:computeControlsPosition`
+   * returns the vertical midpoint of the hovered line. Snapping the
+   * overlay's own vertical center to that point produces line-aligned
+   * placement regardless of overlay height or line-height — without
+   * this translate the overlay sits a few pixels below the text.
+   */
+  transform: translateY(-50%);
   font-family:
     system-ui,
     -apple-system,

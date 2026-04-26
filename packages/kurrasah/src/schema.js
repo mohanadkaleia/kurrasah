@@ -1,17 +1,25 @@
 import { Schema } from 'prosemirror-model'
+import { tableNodes } from 'prosemirror-tables'
 
 // ProseMirror schema for kurrasah.
 //
-// v1 nodes:
+// Nodes:
 //   doc, paragraph, heading (levels 1-3 only), bullet_list, ordered_list,
-//   list_item, blockquote, code_block, hard_break, image (src/alt/title).
-// v1 marks:
+//   list_item, blockquote, code_block, hard_break, image (src/alt/title),
+//   table, table_row, table_header, table_cell.
+// Marks:
 //   strong, em, link (href/title), code.
 //
 // Build a fresh schema rather than reusing prosemirror-schema-basic's `schema`
 // export, because we need to restrict heading levels to 1..3 and give list
 // nodes a content expression compatible with the list commands (liftListItem,
 // sinkListItem, splitListItem, wrapInList).
+//
+// Table nodes are produced via prosemirror-tables's `tableNodes` helper so
+// they carry the `colwidth` attribute that the column-resizing plugin
+// expects. Cell content is restricted to `paragraph+` — lists and nested
+// tables are intentionally out of scope for v1 to avoid GFM-vs-ProseMirror
+// edge cases (GFM has no syntax for either inside a cell).
 
 const pDOM = ['p', 0]
 const blockquoteDOM = ['blockquote', 0]
@@ -195,6 +203,29 @@ const nodes = {
       return brDOM
     },
   },
+
+  // Table nodes produced by `tableNodes`. Spread last so they appear at the
+  // top level of the schema — `doc` declares `content: 'block+'` and the
+  // `tableGroup: 'block'` option below puts `table` in that group.
+  //
+  // `cellContent: 'inline*'` — single-line, inline-only cells.
+  //   * Matches GFM's single-line cell constraint on both sides of the
+  //     pipeline: markdown-it's `table` rule emits inline content
+  //     directly inside `th`/`td` tokens (no nested paragraphs), and GFM
+  //     has no syntax for paragraph breaks, lists, blockquotes, code
+  //     blocks, or nested tables inside a cell. Using `inline*` here
+  //     aligns the schema with what the parser actually produces and
+  //     what the serializer can round-trip.
+  //   * Inline marks (bold, italic, code, links) still work — they
+  //     attach to the inline text inside the cell directly.
+  //   * Hard break is inline, so it's technically allowed; the
+  //     serializer collapses it to a space on output (GFM can't express
+  //     a line break inside a cell). See "Tables" in the README.
+  ...tableNodes({
+    tableGroup: 'block',
+    cellContent: 'inline*',
+    cellAttributes: {},
+  }),
 }
 
 const marks = {

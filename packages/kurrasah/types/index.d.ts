@@ -167,6 +167,7 @@ export type EditorCommandName =
   | 'toggleOrderedList'
   | 'toggleLink'
   | 'insertImage'
+  | 'insertTable'
   | 'undo'
   | 'redo'
 

@@ -9,6 +9,7 @@ import {
   wrapInList,
   liftListItem,
 } from 'prosemirror-schema-list'
+import { TextSelection } from 'prosemirror-state'
 import { undo as pmUndo, redo as pmRedo } from 'prosemirror-history'
 import { MAX_HEADING_LEVEL } from './schema.js'
 
@@ -332,6 +333,85 @@ export function redo() {
   return pmRedo
 }
 
+/**
+ * Insert a fresh GFM-style table at the current selection.
+ *
+ * Options:
+ *   rows        number of rows (including the header row when `withHeader`
+ *               is true). Default 3. Clamped to [1, 20] so a typo in the
+ *               slash-menu args doesn't blow the document up.
+ *   cols        number of columns. Default 3. Same clamp.
+ *   withHeader  if true, the first row uses `table_header` cells; otherwise
+ *               all rows use `table_cell`. Default true. GFM requires a
+ *               header row, so serialization synthesizes one even when this
+ *               is false — but the editor experience is clearer if the
+ *               actual node is a header.
+ *
+ * Places the cursor inside the first cell of the inserted table. Returns
+ * false if the schema lacks table nodes (i.e. the consumer built a custom
+ * schema without them — unsupported in v1 but left as a soft-fail).
+ */
+export function insertTable(schema, options = {}) {
+  const tableType = schema.nodes.table
+  const rowType = schema.nodes.table_row
+  const cellType = schema.nodes.table_cell
+  const headerType = schema.nodes.table_header
+  if (!tableType || !rowType || !cellType || !headerType) {
+    return () => false
+  }
+
+  const { rows = 3, cols = 3, withHeader = true } = options || {}
+  // Clamp to a sensible range — user-provided args from the slash menu are
+  // mostly fine, but a malformed preset shouldn't create a 10000x10000
+  // table and OOM the tab.
+  const rowCount = Math.max(1, Math.min(rows | 0 || 1, 20))
+  const colCount = Math.max(1, Math.min(cols | 0 || 1, 20))
+
+  return (state, dispatch) => {
+    // Cells have `content: 'inline*'` — `*`, not `+` — so empty cells are
+    // valid without fill content. `createAndFill` returns an empty cell
+    // directly.
+    const buildRow = (useHeader) => {
+      const cells = []
+      for (let c = 0; c < colCount; c++) {
+        const cellNodeType = useHeader ? headerType : cellType
+        cells.push(cellNodeType.createAndFill())
+      }
+      return rowType.create(null, cells)
+    }
+
+    const rowsArr = []
+    for (let r = 0; r < rowCount; r++) {
+      rowsArr.push(buildRow(withHeader && r === 0))
+    }
+    const table = tableType.create(null, rowsArr)
+
+    if (dispatch) {
+      // Remember the insertion start position so we can compute the
+      // first-cell cursor target *after* the replace lands.
+      const { from } = state.selection
+      const tr = state.tr.replaceSelectionWith(table)
+      // Boundary layout after insertion (using `from` as the position of
+      // the table_open boundary that replaceSelectionWith writes):
+      //   from + 0   table_open
+      //   from + 1   row_open
+      //   from + 2   header_open (or cell_open)
+      //   from + 3   first valid cursor position inside the cell
+      //
+      // `TextSelection.near` resolves against the post-insert doc and
+      // lands the cursor on the closest valid text position.
+      const targetPos = from + 3
+      const targetDoc = tr.doc
+      if (targetPos <= targetDoc.content.size) {
+        tr.setSelection(TextSelection.near(targetDoc.resolve(targetPos)))
+      }
+      tr.scrollIntoView()
+      dispatch(tr)
+    }
+    return true
+  }
+}
+
 // Name -> factory. The exposed `editor.execCommand(name, ...args)` looks a
 // command up here and invokes it against the current state/view. Factories
 // that take `(schema, ...args)` are bound to the editor's schema at call
@@ -350,6 +430,7 @@ export const commandFactories = {
   toggleOrderedList,
   toggleLink,
   insertImage,
+  insertTable,
   undo,
   redo,
 }
@@ -372,6 +453,7 @@ export function buildCommands(schema) {
     toggleOrderedList: toggleOrderedList(schema),
     toggleLink: (href, title) => toggleLink(schema, href, title),
     insertImage: (url, alt, title) => insertImage(schema, url, alt, title),
+    insertTable: (options) => insertTable(schema, options),
     undo: undo(),
     redo: redo(),
   }

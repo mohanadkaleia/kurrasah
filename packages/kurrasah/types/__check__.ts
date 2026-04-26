@@ -135,6 +135,10 @@ void ok
 // Command name is a string-literal union.
 const cmdName: EditorCommandName = 'insertImage'
 void cmdName
+const tableCmd: EditorCommandName = 'insertTable'
+void tableCmd
+// `execCommand` accepts an options bag for `insertTable`.
+instance.execCommand('insertTable', { rows: 3, cols: 3, withHeader: true })
 // @ts-expect-error — 'toggleRainbow' is not a known command.
 const _badCmd: EditorCommandName = 'toggleRainbow'
 // view getter is EditorView | null.

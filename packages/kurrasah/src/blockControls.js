@@ -143,7 +143,14 @@ export function computeControlsPosition({
   // For RTL: the start edge is visually on the right. We use the rightmost
   // x coordinate observed between the two rects (handles wrapped blocks
   // where `leftRect.right` would be mid-line).
-  const blockTop = Math.round(leftRect.top + 2)
+  //
+  // Vertical alignment: we return the midpoint of the first line's rect,
+  // not its top. The overlay's CSS adds `transform: translateY(-50%)` so
+  // its own vertical center snaps to this value — the result is
+  // line-aligned regardless of overlay height, line-height, or whether
+  // the hovered block is a paragraph (~1.7em) or a heading (~1.25em).
+  const lineCenter = (leftRect.top + leftRect.bottom) / 2
+  const blockTop = Math.round(lineCenter)
   const left = isRtl
     ? Math.round(Math.max(leftRect.right, rightRect ? rightRect.right : leftRect.right) + gap)
     : Math.round(Math.min(leftRect.left, rightRect ? rightRect.left : leftRect.left) - overlayWidth - gap)

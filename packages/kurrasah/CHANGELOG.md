@@ -9,6 +9,57 @@ Each release lists changes under some of these subsections:
 - **Fixed** — bug fixes.
 - **Notes** — behaviors worth surfacing but not strictly actionable.
 
+## [0.5.0] — 2026-04-25
+
+### Fixed
+- The block-controls `+` button now sits centered on the hovered line
+  instead of floating a few pixels below it. The positioning math
+  switched from "top of the line + 2px" to "vertical midpoint of the
+  line", with `transform: translateY(-50%)` on the overlay so the
+  alignment is independent of overlay height or line-height.
+
+### Added
+- **GFM tables** — a new block-level content type. Four schema nodes
+  (`table`, `table_row`, `table_header`, `table_cell`), GitHub-flavored
+  pipe-syntax markdown round-trip, and cell-aware editing plugins.
+  Notable bits:
+  - Cells hold **inline content only** — text + marks. Matches GFM's
+    own constraints (no in-cell line breaks, lists, or nested tables).
+  - `Tab` / `Shift-Tab` move between cells while the cursor is inside
+    a table; outside a table they still sink / lift list items.
+    `Tab` past the final cell of the final row creates a new row.
+  - Column resizing via drag on the right edge of a column. Widths
+    persist on each cell's `colwidth` attribute.
+  - `CellSelection` decoration renders the selection as a neutral gray
+    overlay with a `currentColor` outline — stays inside the package's
+    monochrome aesthetic (upstream prosemirror-tables uses blue).
+- New named command `insertTable(options)` — dispatch via
+  `editor.execCommand('insertTable', { rows, cols, withHeader })`.
+  Defaults to a 3×3 table with a header row. Rows and columns are
+  clamped to the range `[1, 20]` to cap accidental huge inserts.
+- Slash-menu item **جدول** (aliases: `table`, `جدول`) inserts the
+  default 3×3 table.
+- New peer dependency: `prosemirror-tables` (`^1`). Pinned at `1.8.5`
+  in the package's own devDependencies for vitest + build.
+
+### Notes
+- **Roundtrip caveats**. Tables survive `parse → serialize → parse`
+  with stable structure, but the output markdown is normalized:
+  column-separator widths collapse to `----`, cell padding is
+  stripped, and intra-cell whitespace runs (including paragraph
+  breaks, which can exist on the ProseMirror side even though GFM has
+  no syntax for them) collapse to a single space. The resulting
+  markdown re-parses to the same logical content.
+- **Headerless tables** — if a consumer programmatically builds a
+  table whose first row is `table_cell`s (legal in ProseMirror,
+  invalid in GFM), the serializer synthesizes an empty header row so
+  the output re-parses as a valid GFM table.
+- Tables are always-on in v0.5; no new `<Editor>` prop. Consumers who
+  don't want tables can ignore the slash-menu item — the slash-menu
+  item catalog is not yet exported, so a deeper opt-out (disable the
+  plugin, remove the schema node) isn't available in v0.5. Same
+  constraint as the original slash-menu release.
+
 ## [0.4.1] — 2026-04-19
 
 ### Fixed

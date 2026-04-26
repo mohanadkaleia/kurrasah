@@ -5,12 +5,16 @@ import {
 } from 'prosemirror-markdown'
 import { schema as defaultSchema, MAX_HEADING_LEVEL } from './schema.js'
 
-// Configure a CommonMark tokenizer that matches our v1 schema.
+// Configure a CommonMark tokenizer that matches our schema.
 // - `html: false` disables raw HTML (we don't support arbitrary HTML nodes).
-// - We leave the default CommonMark features on; any token that is not in
-//   our schema (e.g. horizontal_rule) must be handled via `ignore: true`
-//   in the token map below, otherwise the parser will throw on that token.
-const tokenizer = () => MarkdownIt('commonmark', { html: false })
+// - We start from the CommonMark preset (which disables GFM extensions) then
+//   explicitly re-enable the `table` rule. CommonMark itself has no table
+//   syntax; markdown-it's `table` rule implements the GFM pipe form.
+// - Any token not in our schema (e.g. horizontal_rule) must be handled via
+//   `ignore: true` in the token map below, otherwise the parser will throw
+//   on that token.
+const tokenizer = () =>
+  MarkdownIt('commonmark', { html: false }).enable('table')
 
 // True if a list is "tight" (no blank lines between items). Copied from the
 // reference implementation in prosemirror-markdown/src/from_markdown.ts.
@@ -61,6 +65,19 @@ function buildTokens(schema) {
     em: { mark: 'em' },
     strong: { mark: 'strong' },
     code_inline: { mark: 'code', noCloseToken: true },
+  }
+
+  // Table tokens. markdown-it emits `thead`/`tbody` wrappers around rows,
+  // but ProseMirror's structure is table → table_row → (table_header |
+  // table_cell), so we ignore the section wrappers and let the alignment
+  // of `tr_open/th_open/td_open` tokens produce the right tree directly.
+  if (schema.nodes.table) {
+    tokens.table = { block: 'table' }
+    tokens.thead = { ignore: true }
+    tokens.tbody = { ignore: true }
+    tokens.tr = { block: 'table_row' }
+    tokens.th = { block: 'table_header' }
+    tokens.td = { block: 'table_cell' }
   }
 
   if (schema.nodes.image) {
@@ -184,6 +201,146 @@ const nodeSerializers = {
   text(state, node) {
     state.text(node.text, !state.inAutolink)
   },
+
+  // ---- Table nodes --------------------------------------------------
+  //
+  // GFM pipe syntax. Example:
+  //
+  //     | col1 | col2 |
+  //     |------|------|
+  //     | a    | b    |
+  //
+  // The parse-side uses markdown-it's native `table` rule (GFM). The
+  // serialize-side is hand-rolled because prosemirror-markdown does not
+  // ship a helper for GFM tables.
+  //
+  // Implementation notes:
+  //
+  // - We render rows by calling `serializeCellLine` on each cell, which
+  //   produces the cell's inline content using the current serializer
+  //   state, with pipes escaped and intra-cell newlines collapsed to a
+  //   single space. GFM has no syntax for paragraph breaks inside a
+  //   cell, so two paragraphs in a cell must serialize to one visible
+  //   line on output — documented under "Roundtrip caveat" in the
+  //   README.
+  //
+  // - The header row is emitted first, followed by an alignment line of
+  //   `|---|---|...|`. If the document has no `table_header` cells in
+  //   the first row (legal in ProseMirror but not in GFM, which requires
+  //   a header), we still emit an empty header row so the output parses
+  //   back as a valid GFM table.
+  //
+  // - Column count is taken from the first row; malformed tables where
+  //   rows have different widths fall back to the first row's count.
+  //   prosemirror-tables's normalizer should have fixed this before we
+  //   ever see the node.
+  table(state, node) {
+    const firstRow = node.firstChild
+    if (!firstRow || firstRow.childCount === 0) {
+      // Degenerate table; skip rather than emit malformed markdown.
+      state.closeBlock(node)
+      return
+    }
+    const colCount = firstRow.childCount
+    const firstRowIsHeader =
+      firstRow.firstChild &&
+      firstRow.firstChild.type.name === 'table_header'
+
+    // Header row. If the first row is already `table_header` cells,
+    // serialize it as-is. Otherwise emit an empty header row (GFM
+    // requires one), then serialize every row as a body row.
+    if (firstRowIsHeader) {
+      state.write(serializeRow(state, firstRow))
+      state.write('\n')
+    } else {
+      const emptyHeader =
+        '| ' + new Array(colCount).fill(' ').join(' | ') + ' |'
+      state.write(emptyHeader + '\n')
+    }
+
+    // Separator line.
+    const separator =
+      '|' + new Array(colCount).fill('----').join('|') + '|'
+    state.write(separator + '\n')
+
+    // Body rows. Skip the header (already emitted) when it was the first
+    // row; otherwise include every row.
+    const bodyStart = firstRowIsHeader ? 1 : 0
+    for (let i = bodyStart; i < node.childCount; i++) {
+      const row = node.child(i)
+      state.write(serializeRow(state, row))
+      state.write('\n')
+    }
+
+    state.closeBlock(node)
+  },
+
+  // `table_row`, `table_header`, `table_cell` serializers exist so the
+  // `MarkdownSerializer` constructor validates the schema, but they are
+  // never actually invoked — the `table` serializer above handles the
+  // whole structure in one pass. ProseMirror walks `renderContent` per
+  // node otherwise, which would double-emit cells.
+  table_row() {
+    /* handled by `table` */
+  },
+  table_header() {
+    /* handled by `table` */
+  },
+  table_cell() {
+    /* handled by `table` */
+  },
+}
+
+// Render a single row as `| cell1 | cell2 | ... |` with no trailing
+// newline. Each cell's inline content is produced by rendering the cell's
+// paragraphs with the same serializer state, then collapsing paragraph
+// breaks into a single space and escaping pipes.
+function serializeRow(state, row) {
+  const parts = []
+  for (let i = 0; i < row.childCount; i++) {
+    const cell = row.child(i)
+    parts.push(serializeCellContent(state, cell))
+  }
+  return '| ' + parts.join(' | ') + ' |'
+}
+
+// Serialize a cell to a single inline string. Cells hold inline content
+// directly (`cellContent: 'inline*'` in the schema), so we render the
+// cell itself as inline — no paragraph unwrapping needed.
+//
+// Post-processing:
+//   * Collapse any whitespace run (including soft newlines from hard
+//     breaks) into a single space — GFM has no in-cell line-break
+//     syntax. Documented under "Tables" in the README.
+//   * Escape literal `|` as `\|` so the cell boundary isn't broken.
+function serializeCellContent(state, cell) {
+  const rendered = renderInlineToString(state, cell)
+  const collapsed = rendered.replace(/\s+/g, ' ').trim()
+  return collapsed.replace(/\|/g, '\\|')
+}
+
+// Render a node's inline content through the serializer's usual
+// mark/text pipeline, but capture the output into a string instead of
+// appending it to the enclosing document. Uses the serializer's own
+// `renderInline` so inline marks (em, strong, code, link) go through
+// their canonical open/close handlers.
+function renderInlineToString(state, node) {
+  // Stash and swap the serializer's internal write buffer. `MarkdownSerializerState`
+  // maintains `state.out` as the accumulated output and `state.delim` as the
+  // current line prefix; swap `state.out` for a fresh empty string, render,
+  // then restore.
+  const savedOut = state.out
+  const savedClosed = state.closed
+  const savedInTightList = state.inTightList
+  state.out = ''
+  state.closed = false
+  // Render marks + text. `renderInline` appends to `state.out` via `state.text`.
+  state.renderInline(node)
+  const produced = state.out
+  state.out = savedOut
+  state.closed = savedClosed
+  state.inTightList = savedInTightList
+  return produced
 }
 
 const markSerializers = {

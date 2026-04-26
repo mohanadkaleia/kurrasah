@@ -25,6 +25,11 @@ import { Plugin, PluginKey } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
 import { undo, redo } from 'prosemirror-history'
 import {
+  tableEditing,
+  columnResizing,
+  goToNextCell,
+} from 'prosemirror-tables'
+import {
   toggleBold,
   toggleItalic,
   toggleCode,
@@ -288,8 +293,28 @@ function buildKeymap(schema) {
         splitBlock
       )
     )
-    bind('Tab', sinkListItem(schema.nodes.list_item))
-    bind('Shift-Tab', liftListItem(schema.nodes.list_item))
+    // Tab / Shift-Tab: inside a table, `goToNextCell` moves between cells
+    // (creating a new row when tabbing past the final cell of the final
+    // row). Outside a table, fall through to the list-item sink/lift so
+    // the existing list behaviour is preserved. `chainCommands` stops at
+    // the first command that returns `true`, so the table handler only
+    // wins when the selection is actually inside a cell.
+    if (schema.nodes.table) {
+      bind(
+        'Tab',
+        chainCommands(goToNextCell(1), sinkListItem(schema.nodes.list_item))
+      )
+      bind(
+        'Shift-Tab',
+        chainCommands(
+          goToNextCell(-1),
+          liftListItem(schema.nodes.list_item)
+        )
+      )
+    } else {
+      bind('Tab', sinkListItem(schema.nodes.list_item))
+      bind('Shift-Tab', liftListItem(schema.nodes.list_item))
+    }
   }
 
   return binds
@@ -358,7 +383,7 @@ export function buildPlugins({
     return plugins
   }
 
-  return [
+  const plugins = [
     buildInputRules(schema),
     keymap(buildKeymap(schema)),
     keymap(baseKeymap),
@@ -366,4 +391,17 @@ export function buildPlugins({
     placeholderPlugin(placeholder),
     slashMenuPlugin({ trigger: slashTrigger, enabled: slashEnabled }),
   ]
+
+  // Table plugins. `columnResizing` installs a plugin-view that renders
+  // the drag handles and must come before `tableEditing` so the resize
+  // gets first crack at mouse events (docs recommend this order). Both
+  // plugins require the schema to carry the table nodes — they hook off
+  // `schema.nodes.table` internally, but guarding keeps the plugin stack
+  // small in a hypothetical reduced-schema build.
+  if (schema.nodes.table) {
+    plugins.push(columnResizing())
+    plugins.push(tableEditing())
+  }
+
+  return plugins
 }
