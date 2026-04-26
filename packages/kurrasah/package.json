@@ -1,6 +1,6 @@
 {
   "name": "kurrasah",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "type": "module",
   "description": "Reusable Vue 3 + ProseMirror markdown editor with RTL-first defaults.",
   "keywords": [

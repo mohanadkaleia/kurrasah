@@ -247,10 +247,16 @@ const markdown = ref('# مرحبا')
                 <td class="px-4 py-2 border-b border-border">دالة اختيارية تستدعيها الحزمة حين يحتاج أمر الرابط إلى <span class="font-mono" dir="ltr">URL</span>. أعِد <span class="font-mono" dir="ltr">null</span> للإلغاء. في حال عدم تمريرها، يعود المحرر إلى <span class="font-mono" dir="ltr">window.prompt</span> بالإنجليزية.</td>
               </tr>
               <tr>
-                <td class="px-4 py-2 font-mono" dir="ltr">onRequestImage</td>
-                <td class="px-4 py-2 font-mono" dir="ltr">(context) =&gt; Promise&lt;{src, alt?, title?} | null&gt; | null</td>
+                <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">onRequestImage</td>
+                <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">(context) =&gt; Promise&lt;{src, alt?, title?} | null&gt; | null</td>
+                <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">null</td>
+                <td class="px-4 py-2 border-b border-border">مثل <span class="font-mono" dir="ltr">onRequestLink</span>، لكن لأمر إدراج الصور (قائمة الكتل / شريط الأدوات).</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2 font-mono" dir="ltr">onUploadImage</td>
+                <td class="px-4 py-2 font-mono" dir="ltr">(file, {source: 'drop' | 'paste'}) =&gt; Promise&lt;{src, alt?, title?} | null&gt; | null</td>
                 <td class="px-4 py-2 font-mono" dir="ltr">null</td>
-                <td class="px-4 py-2">مثل <span class="font-mono" dir="ltr">onRequestLink</span>، لكن لأمر إدراج الصور.</td>
+                <td class="px-4 py-2">دالة اختيارية تستدعيها الحزمة عند سحب صورة وإفلاتها على المحرّر أو لصقها من الحافظة. نفّذ عملية الرفع وأعِد <span class="font-mono" dir="ltr">{src, alt?, title?}</span>، أو <span class="font-mono" dir="ltr">null</span> للإلغاء. راجع <a href="#docs-section-image-upload" class="underline underline-offset-2 hover:text-accent-hover">رفع الصور</a>.</td>
               </tr>
             </tbody>
           </table>
@@ -541,6 +547,75 @@ const markdown = ref('# مرحبا')
           Medium وSubstack: النقرة الاعتيادية تعني «تَنَقَّل»، لا
           «حرِّر».
         </p>
+      </section>
+
+      <!-- 12.5 Image upload (drop / paste) -------------------------- -->
+      <section
+        id="docs-section-image-upload"
+        class="mb-12"
+        data-testid="docs-section-image-upload"
+      >
+        <h2 class="text-[1.5rem] font-semibold text-text-primary mt-0 mb-3">
+          رفع الصور (سحب وإفلات / لصق)
+        </h2>
+        <p class="text-text-secondary leading-relaxed mb-3">
+          إلى جانب مسار <span class="font-mono" dir="ltr">onRequestImage</span>
+          الذي يَطلب رابط <span class="font-mono" dir="ltr">URL</span> من
+          المستخدم (عبر قائمة الكتل أو شريط الأدوات)، يدعم المحرّر مساراً
+          ثانياً يلتقط <strong>الملفّات</strong>: عند سحب صورة وإفلاتها فوق
+          سطح التحرير أو لصق صورة من الحافظة، تستدعى الدالة
+          <span class="font-mono" dir="ltr">onUploadImage</span> مع
+          <span class="font-mono" dir="ltr">(file, {source})</span> حيث
+          <span class="font-mono" dir="ltr">source</span> إمّا
+          <span class="font-mono" dir="ltr">'drop'</span> أو
+          <span class="font-mono" dir="ltr">'paste'</span>. تتولّى أنت رفع
+          الملف إلى الخادم وتُرجع <span class="font-mono" dir="ltr">src</span>
+          النهائي ليُدرج في المستند.
+        </p>
+        <p class="text-text-secondary leading-relaxed mb-3">
+          إذا لم تُمرّر <span class="font-mono" dir="ltr">onUploadImage</span>،
+          يَترك المحرّر السلوك الافتراضي للمتصفّح كما هو ولا يتدخّل. أمّا
+          المسار القديم (<span class="font-mono" dir="ltr">onRequestImage</span>
+          عبر قائمة الكتل / شريط الأدوات) فيبقى يعمل دون تغيير — المسارَين
+          مُكمِّلان.
+        </p>
+        <p class="text-text-secondary leading-relaxed mb-3">
+          المثال أدناه يستخدم <span class="font-mono" dir="ltr">FileReader</span>
+          لتضمين الصورة كـ <span class="font-mono" dir="ltr">data URL</span> —
+          مفيد للعروض التوضيحية أو الحالات المحدودة. للنشر الفعلي، استبدل
+          هذا بنداء <span class="font-mono" dir="ltr">fetch</span> إلى
+          خدمة التخزين لديك.
+        </p>
+        <pre dir="ltr"><code class="text-sm font-mono leading-relaxed">async function uploadImage(file, { source }) {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = () =&gt; {
+      resolve({ src: String(reader.result), alt: file.name })
+    }
+    reader.onerror = () =&gt; resolve(null)
+    reader.readAsDataURL(file)
+  })
+}</code></pre>
+        <p class="text-text-secondary leading-relaxed mt-3">
+          ملاحظات:
+        </p>
+        <ul class="list-disc pr-6 text-text-secondary leading-relaxed space-y-1 mb-3">
+          <li>
+            تُستدعى الدالة مرّة لكلّ ملفّ. إفلات عدّة ملفّات دفعةً واحدة يُدرج
+            صور متعدّدة بالترتيب.
+          </li>
+          <li>
+            إعادة <span class="font-mono" dir="ltr">null</span> تُلغي الإدراج
+            دون أن يَعود المتصفّح لتصرّفه الافتراضي (لا يفتح الصورة في تبويب،
+            ولا يُلصِقها كنصّ).
+          </li>
+          <li>
+            الأخطاء المُلتقَطة من الدالة (سواء استثناءات أو وعود مرفوضة)
+            تُسجَّل في <span class="font-mono" dir="ltr">console.error</span>
+            ببادئة <span class="font-mono" dir="ltr">[kurrasah]</span> ولا
+            تتسبّب في انهيار المحرّر.
+          </li>
+        </ul>
       </section>
 
       <!-- 13. Live preview ------------------------------------------- -->

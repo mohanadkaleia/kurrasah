@@ -44,6 +44,7 @@ import 'kurrasah/style.css'
 | `tableToolbarEnabled` | `boolean` | `true` | Enable the floating cell-actions toolbar shown above a table while the cursor is inside one of its cells. See [Tables](#tables) → [إدارة الأسطر والأعمدة](#إدارة-الأسطر-والأعمدة-row--column-management). |
 | `onRequestLink` | `(context) => Promise<{href, title?} \| null> \| {href, title?} \| null` | `null` | Optional hook called when the link command needs a URL. Return `null` to cancel. See [Link / image UI hooks](#link--image-ui-hooks). |
 | `onRequestImage` | `(context) => Promise<{src, alt?, title?} \| null> \| {src, alt?, title?} \| null` | `null` | Same, for images. |
+| `onUploadImage` | `(file, {source: 'drop' \| 'paste'}) => Promise<{src, alt?, title?} \| null> \| {src, alt?, title?} \| null` | `null` | Optional hook called when the user drops or pastes an image file. Run your upload, return the final `src`. Return `null` to cancel. See [Image uploads (drag-and-drop / paste)](#image-uploads-drag-and-drop--paste). |
 
 ### Events
 
@@ -312,6 +313,48 @@ Callbacks may return a value synchronously or as a Promise. Returning `null` (or
 **`context.href` on mixed selections.** When the selection spans characters that carry the link mark plus characters that don't, `context.href` reflects only the mark at the start of the selection and ignores the rest. Consumers that need to detect mixed-state selections should inspect the full range themselves.
 
 **Callback errors.** Rejections from `onRequestLink` / `onRequestImage` are caught so the editor doesn't crash. They are surfaced via `console.error` with a `[kurrasah]` prefix; check the console if your callback is silently not applying.
+
+## Image uploads (drag-and-drop / paste)
+
+The `onRequestImage` hook above is for the **URL prompt** path — slash menu, toolbar button, or `execCommand('insertImage')`. For the **file** path — the user drops one or more image files onto the editor surface, or pastes an image (typically a screenshot) from the clipboard — pass `onUploadImage` instead. The two coexist; you can wire one, the other, or both.
+
+```vue
+<Editor v-model="markdown" :on-upload-image="uploadImage" />
+```
+
+```js
+async function uploadImage(file, { source }) {
+  // `source` is 'drop' | 'paste' — handy if you want different UX
+  // (a progress toast for drops, a quieter inline insert for pastes).
+  const result = await myUploader.upload(file)
+  if (!result) return null            // user cancelled / network failed
+  return { src: result.url, alt: file.name }
+}
+```
+
+For a storage-free demo, embed the file as a data URL via `FileReader`:
+
+```js
+async function uploadImage(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve({ src: String(reader.result), alt: file.name })
+    reader.onerror = () => resolve(null)
+    reader.readAsDataURL(file)
+  })
+}
+```
+
+**Behavior.**
+
+- The callback runs once per dropped or pasted image file. **Multi-file drops fan out** in source order; each successful result inserts an `image` node at the running insertion point so they land in the order they were dropped.
+- Drop position is computed from the event's coordinates (`view.posAtCoords`). RTL and LTR work the same — no direction-specific logic.
+- Returning `null` (or resolving to `null`) cancels the insert, but the editor still calls `preventDefault` so the browser doesn't navigate to the file or insert a stray attachment-as-text.
+- **The fallback URL path is unchanged.** Slash menu → "صورة" / "Image" still calls `onRequestImage` (or `window.prompt`) for a URL. The two paths target different gestures.
+- The package never base64-embeds files for you — that's the consumer's call. The demo in `web/` uses `FileReader.readAsDataURL`; production consumers should upload to their own backend and return the resulting URL.
+- Drop / paste are ignored when the editor is `readonly` — parity with typing input.
+
+**Behavioral notes.** Errors thrown from `onUploadImage` (or rejected Promises) are caught and surfaced via `console.error` with a `[kurrasah]` prefix. The editor stays alive; the file simply isn't inserted.
 
 ## Styling hooks
 

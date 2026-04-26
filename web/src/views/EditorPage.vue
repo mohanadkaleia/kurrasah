@@ -26,6 +26,13 @@ import ImportExportDialog from '../components/ui/ImportExportDialog.vue'
 import { useDocument } from '../composables/useDocument.js'
 import { useEditorChrome } from '../composables/useEditorChrome.js'
 
+// Cap dropped / pasted image files at 5 MB. The demo persists everything
+// to localStorage as a data URL (see `uploadImage` below); a 10 MB image
+// becomes ~14 MB of base64 in storage and quickly blows the per-origin
+// quota. Production consumers wiring an actual upload backend can drop
+// or raise this constant — it's a demo guard, not a package limit.
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+
 const { document: doc, ready, load, debouncedUpdate, flushUpdate } = useDocument()
 
 const { showImportDialog, showExportDialog, updatedAt, documentReady } =
@@ -200,6 +207,39 @@ function onRequestImage() {
   return { src, alt }
 }
 
+// Drop / paste image upload. The demo runs a storage-free flow: read the
+// file as a data URL (base64) via FileReader, then return that as the
+// `src`. This means the localStorage record carries the full image bytes
+// inline — practical for a single-document demo, hostile for anything
+// larger. Consumers wiring a real backend should swap this for an actual
+// upload (POST -> URL).
+//
+// Size cap is enforced here, NOT in the package. The package trusts the
+// consumer's MIME / size policy.
+function uploadImage(file /* , { source } */) {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    showToast('حجم الصورة يتجاوز ٥ ميغابايت')
+    return null
+  }
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result
+      if (typeof result !== 'string' || result.length === 0) {
+        showToast('تعذّر قراءة الصورة')
+        resolve(null)
+        return
+      }
+      resolve({ src: result, alt: file.name || '' })
+    }
+    reader.onerror = () => {
+      showToast('تعذّر قراءة الصورة')
+      resolve(null)
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
 // --- Cleanup --------------------------------------------------------------
 
 onBeforeUnmount(() => {
@@ -272,6 +312,7 @@ onBeforeUnmount(() => {
           :toolbar="false"
           :on-request-link="onRequestLink"
           :on-request-image="onRequestImage"
+          :on-upload-image="uploadImage"
           @change="onContentChange"
           @ready="onEditorReady"
         />

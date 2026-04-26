@@ -9,6 +9,39 @@ Each release lists changes under some of these subsections:
 - **Fixed** — bug fixes.
 - **Notes** — behaviors worth surfacing but not strictly actionable.
 
+## [0.6.0] — 2026-04-25
+
+### Added
+- **`onUploadImage` callback prop.** Drag-and-drop and clipboard-paste of
+  image files now route through a new consumer callback so the
+  application can run its actual upload pipeline. The callback receives
+  `(file, {source})` where `source` is `'drop'` or `'paste'`, and
+  resolves to `{src, alt?, title?}` (or `null` to cancel). When the prop
+  is omitted, the editor does not interfere with the browser's native
+  drop / paste behavior — opt-in only.
+  - Multi-file drops fan out: each file invokes the callback in source
+    order, and each successful result inserts an `image` node at the
+    running insertion point so the order is preserved.
+  - Drop position is computed via `view.posAtCoords({left, top})`, with
+    a fallback to the current selection's `from` when coords don't
+    resolve. No direction-specific math — works the same in RTL and LTR.
+  - The fallback `window.prompt`-URL path on the slash menu / toolbar
+    (`onRequestImage`) is **unchanged**. Both paths coexist.
+
+### Notes
+- Errors thrown from `onUploadImage` (or rejected Promises) are caught
+  and surfaced via `console.error` with a `[kurrasah]` prefix. The
+  editor stays alive; the file simply isn't inserted.
+- The package never base64-embeds files itself — that is the consumer's
+  call. The demo in `web/` uses `FileReader.readAsDataURL` for a
+  storage-free localStorage-backed flow; production consumers should
+  upload to their own backend and return the resulting URL.
+- Drop / paste are ignored when the editor is `readonly` — parity with
+  typing input.
+- The handlers are wired on `view.dom` directly (not via PM's
+  `handleDrop` / `handlePaste`) because the consumer callback may be
+  async; PM's plugin hooks expect a synchronous boolean.
+
 ## [0.5.0] — 2026-04-25
 
 ### Fixed

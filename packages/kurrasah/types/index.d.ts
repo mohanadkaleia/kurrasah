@@ -72,6 +72,57 @@ export type ImageCallback = (
   ctx: ImageRequestContext
 ) => ImageResult | null | Promise<ImageResult | null>
 
+/**
+ * Origin of a `onUploadImage` invocation:
+ *   - `'drop'`  — user dragged-and-dropped one or more image files onto
+ *     the editor surface.
+ *   - `'paste'` — user pasted an image file (typically a screenshot) from
+ *     the clipboard.
+ * Surfaces in `UploadImageContext.source` so consumers can route between
+ * the two paths if the upload pipeline differs (e.g. show a different
+ * progress affordance, or only accept one of them).
+ */
+export type UploadImageSource = 'drop' | 'paste'
+
+/**
+ * Context passed to `onUploadImage`. The `source` field disambiguates a
+ * drop event from a paste event so consumers can tailor behavior.
+ */
+export interface UploadImageContext {
+  source: UploadImageSource
+}
+
+/**
+ * Result of a successful upload. Aliases {@link ImageResult} — the shape
+ * `{ src, alt?, title? }` is intentionally identical between the URL-prompt
+ * path (`onRequestImage`) and the upload path (`onUploadImage`).
+ */
+export type UploadImageResult = ImageResult
+
+/**
+ * Consumer-provided hook invoked when the user drops or pastes one or
+ * more image files onto the editor. Receives the raw `File` plus a
+ * context object describing whether the trigger was a drop or a paste.
+ * The package never base64-embeds the file itself — consumers run the
+ * actual upload (or embed via `FileReader.readAsDataURL` for demos) and
+ * resolve to `{src, alt?, title?}`. Return `null` (or resolve to `null`)
+ * to cancel without inserting; the package still preventDefaults the
+ * native event so the browser doesn't navigate to the file or insert a
+ * stray attachment-as-text.
+ *
+ * Multi-file drops invoke this callback once per file, in source order.
+ * Each successful resolution inserts an `image` node at the running
+ * insertion point so files land in the order they were dropped.
+ *
+ * Errors thrown from the callback (or rejected Promises) are caught and
+ * surfaced via `console.error` with a `[kurrasah]` prefix. They do not
+ * crash the editor.
+ */
+export type UploadImageCallback = (
+  file: File,
+  ctx: UploadImageContext
+) => UploadImageResult | null | Promise<UploadImageResult | null>
+
 // ---------------------------------------------------------------------------
 // <Editor> props
 // ---------------------------------------------------------------------------
@@ -132,6 +183,17 @@ export interface EditorProps {
   onRequestLink?: LinkCallback | null
   /** Optional hook for image UI. See `ImageCallback`. */
   onRequestImage?: ImageCallback | null
+  /**
+   * Optional hook called when the user drops or pastes an image file onto
+   * the editor. Distinct from `onRequestImage`, which handles the
+   * slash-menu / toolbar URL-prompt path. See `UploadImageCallback`.
+   *
+   * When this callback is **not** provided, the editor does not interfere
+   * with the browser's native drop / paste handling. When it **is**
+   * provided, the editor preventDefaults the native event for image files
+   * and routes each one through this callback.
+   */
+  onUploadImage?: UploadImageCallback | null
 }
 
 // ---------------------------------------------------------------------------

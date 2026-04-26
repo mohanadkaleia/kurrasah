@@ -43,6 +43,12 @@ import { commandFactories } from './commands.js'
 //   onRequestImage: (context) =>
 //       Promise<{src, alt?, title?} | null> | {src, alt?, title?} | null
 //                                   called when the image command needs a URL
+//   onUploadImage: (file, {source: 'drop' | 'paste'}) =>
+//       Promise<{src, alt?, title?} | null> | {src, alt?, title?} | null
+//                                   called when the user drops or pastes an
+//                                   image file. Consumer runs the actual
+//                                   upload (or embeds as a data URL) and
+//                                   returns the final src to insert.
 //
 // Events
 //   update:modelValue(md: string)
@@ -77,6 +83,14 @@ const props = defineProps({
   tableToolbarEnabled: { type: Boolean, default: true },
   onRequestLink: { type: Function, default: null },
   onRequestImage: { type: Function, default: null },
+  // Drop / paste image-file handler. When supplied, the editor takes over
+  // the native drop / paste path for image files: it preventDefaults the
+  // browser's default (which would either navigate to the file or insert
+  // a base64 fallback) and routes each File through this callback. The
+  // callback returns the final `{src, alt?, title?}` to insert — typically
+  // after running an actual upload — or `null` to cancel. The slash-menu
+  // / toolbar URL-prompt path (`onRequestImage`) is unaffected.
+  onUploadImage: { type: Function, default: null },
 })
 
 const emit = defineEmits(['update:modelValue', 'change', 'ready'])
@@ -151,6 +165,23 @@ function createView() {
   //     the link for editing the anchor text.
   view.value.dom.addEventListener('click', onLinkClickCapture, true)
 
+  // Drop / paste image upload. Registered on the editor's DOM rather than
+  // as PM `handleDrop` / `handlePaste` plugin hooks because we need to
+  // await the async upload callback before dispatching the inserting
+  // transaction. PM hooks expect a synchronous boolean.
+  // Capture phase — ProseMirror also installs paste / drop handlers on
+  // `view.dom` (bubble phase) and registered them BEFORE we got the
+  // chance, since `new EditorView(...)` ran first. If we listened on
+  // bubble too, PM's clipboard parser would already have inserted the
+  // image (e.g. as a base64 attachment) by the time our `preventDefault`
+  // fires, and the user would see two images. Capture lets us run first
+  // and call `preventDefault` so PM's bubble handler bails (PM checks
+  // `event.defaultPrevented` and exits when set).
+  view.value.dom.addEventListener('dragover', onEditorDragOver, true)
+  view.value.dom.addEventListener('dragenter', onEditorDragOver, true)
+  view.value.dom.addEventListener('drop', onEditorDrop, true)
+  view.value.dom.addEventListener('paste', onEditorPaste, true)
+
   // Apply trailing-paragraph invariants to the *initial* state. Plugins'
   // `appendTransaction` hook only fires on `docChanged` events, so a
   // doc parsed from markdown that ends in (or stacks) trapping blocks
@@ -171,13 +202,207 @@ function createView() {
   emit('ready', view.value)
 }
 
-// Mirror `onRequestLink` / `onRequestImage` onto the current view. Re-run
-// whenever the view is rebuilt or the props change.
+// Mirror `onRequestLink` / `onRequestImage` / `onUploadImage` onto the
+// current view. Re-run whenever the view is rebuilt or the props change.
 function syncRequestCallbacks() {
   if (!view.value) return
   view.value._editorCoreRequests = {
     link: props.onRequestLink || null,
     image: props.onRequestImage || null,
+    upload: props.onUploadImage || null,
+  }
+}
+
+// --- Drop / paste image upload handlers -----------------------------------
+//
+// Wired directly on `view.dom` (not as PM plugin event handlers) because
+// the consumer-supplied `onUploadImage` callback may return a Promise; we
+// need to await it before dispatching the inserting transaction, and the
+// PM `handleDrop` / `handlePaste` hooks expect a synchronous boolean.
+//
+// Behavior contract (matches README):
+//   - When `onUploadImage` is NOT provided, these handlers are no-ops and
+//     the browser's default drop / paste behavior runs unchanged.
+//   - When `onUploadImage` IS provided AND the event carries one or more
+//     image files, we preventDefault and route each file through the
+//     callback. Other file types (e.g. text/plain attachments) are
+//     ignored — we don't preventDefault and the browser handles them.
+//   - When the editor is `readonly`, drop / paste are ignored entirely.
+
+function eventHasImageFiles(dataTransfer) {
+  if (!dataTransfer) return false
+  // `files` is the canonical source for drop. `items` is broader (covers
+  // paste's clipboardData and modern drag scenarios). Either is fine.
+  if (dataTransfer.files && dataTransfer.files.length > 0) {
+    for (const f of dataTransfer.files) {
+      if (f && typeof f.type === 'string' && f.type.startsWith('image/')) {
+        return true
+      }
+    }
+  }
+  if (dataTransfer.items && dataTransfer.items.length > 0) {
+    for (const item of dataTransfer.items) {
+      if (
+        item &&
+        item.kind === 'file' &&
+        typeof item.type === 'string' &&
+        item.type.startsWith('image/')
+      ) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+function collectImageFiles(dataTransfer) {
+  const out = []
+  if (!dataTransfer) return out
+  if (dataTransfer.files && dataTransfer.files.length > 0) {
+    for (const f of dataTransfer.files) {
+      if (f && typeof f.type === 'string' && f.type.startsWith('image/')) {
+        out.push(f)
+      }
+    }
+    if (out.length > 0) return out
+  }
+  // Fallback: synthesize from `items` (paste path always lands here since
+  // `clipboardData.files` is often empty in non-Chrome browsers).
+  if (dataTransfer.items && dataTransfer.items.length > 0) {
+    for (const item of dataTransfer.items) {
+      if (
+        item &&
+        item.kind === 'file' &&
+        typeof item.type === 'string' &&
+        item.type.startsWith('image/') &&
+        typeof item.getAsFile === 'function'
+      ) {
+        const file = item.getAsFile()
+        if (file) out.push(file)
+      }
+    }
+  }
+  return out
+}
+
+// Insert an image node at `pos` and return the position immediately AFTER
+// the inserted leaf so subsequent inserts in the same drop-batch land in
+// source order. Returns null if the insert was aborted (no image type, no
+// non-empty src).
+function insertImageAtPos(pos, attrs) {
+  if (!view.value) return null
+  const v = view.value
+  const imageType = v.state.schema.nodes.image
+  if (!imageType) return null
+  if (!attrs || typeof attrs.src !== 'string' || attrs.src.length === 0) {
+    return null
+  }
+  const node = imageType.createAndFill({
+    src: attrs.src,
+    alt: attrs.alt != null ? attrs.alt : null,
+    title: attrs.title != null ? attrs.title : null,
+  })
+  if (!node) return null
+  // Clamp pos within the doc — `posAtCoords` can resolve to slightly past
+  // the end on some browsers when the cursor is dropped on the trailing
+  // padding region.
+  const safePos = Math.max(0, Math.min(pos, v.state.doc.content.size))
+  const tr = v.state.tr.insert(safePos, node).scrollIntoView()
+  v.dispatch(tr)
+  // After insert the doc grew by 1 (image is a leaf inline node, size 1).
+  return safePos + node.nodeSize
+}
+
+function onEditorDragOver(event) {
+  if (!view.value || props.readonly) return
+  if (!props.onUploadImage) return
+  if (!eventHasImageFiles(event.dataTransfer)) return
+  // Tell the browser we'll accept the drop. Both `dragenter` and
+  // `dragover` need to preventDefault for the drop event to fire at all.
+  if (event.dataTransfer) {
+    try {
+      event.dataTransfer.dropEffect = 'copy'
+    } catch {
+      // Some browsers throw on assignment in certain phases — safe to
+      // ignore; preventDefault below is what actually opens the drop.
+    }
+  }
+  event.preventDefault()
+}
+
+function onEditorDrop(event) {
+  if (!view.value || props.readonly) return
+  const callback = props.onUploadImage
+  if (!callback) return
+  const files = collectImageFiles(event.dataTransfer)
+  if (files.length === 0) return
+
+  event.preventDefault()
+  event.stopPropagation()
+
+  // Resolve insertion position from the drop coordinates. Fall back to
+  // the current selection's `from` when `posAtCoords` declines (e.g. drop
+  // landed on padding outside any text node).
+  let insertPos
+  const coordsResult = view.value.posAtCoords({
+    left: event.clientX,
+    top: event.clientY,
+  })
+  if (coordsResult && typeof coordsResult.pos === 'number') {
+    insertPos = coordsResult.pos
+  } else {
+    insertPos = view.value.state.selection.from
+  }
+
+  // Process files sequentially; advance `insertPos` past each insert so
+  // multi-file drops land in source order.
+  let runningPos = insertPos
+  let chain = Promise.resolve()
+  for (const file of files) {
+    chain = chain.then(async () => {
+      try {
+        const result = await callback(file, { source: 'drop' })
+        if (!result || typeof result !== 'object') return
+        if (typeof result.src !== 'string' || result.src.length === 0) return
+        const after = insertImageAtPos(runningPos, result)
+        if (after != null) runningPos = after
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[kurrasah] onUploadImage callback failed:', err)
+      }
+    })
+  }
+}
+
+function onEditorPaste(event) {
+  if (!view.value || props.readonly) return
+  const callback = props.onUploadImage
+  if (!callback) return
+  const clipboardData = event.clipboardData
+  if (!clipboardData) return
+  const files = collectImageFiles(clipboardData)
+  if (files.length === 0) return
+
+  event.preventDefault()
+
+  // Paste inserts at the current selection. After each insert, advance
+  // by reading the live state — the dispatched transaction has already
+  // moved the selection past the new node.
+  let chain = Promise.resolve()
+  for (const file of files) {
+    chain = chain.then(async () => {
+      try {
+        const result = await callback(file, { source: 'paste' })
+        if (!result || typeof result !== 'object') return
+        if (typeof result.src !== 'string' || result.src.length === 0) return
+        if (!view.value) return
+        const pos = view.value.state.selection.from
+        insertImageAtPos(pos, result)
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[kurrasah] onUploadImage callback failed:', err)
+      }
+    })
   }
 }
 
@@ -208,6 +433,10 @@ function onLinkClickCapture(event) {
 function destroyView() {
   if (view.value) {
     view.value.dom.removeEventListener('click', onLinkClickCapture, true)
+    view.value.dom.removeEventListener('dragover', onEditorDragOver, true)
+    view.value.dom.removeEventListener('dragenter', onEditorDragOver, true)
+    view.value.dom.removeEventListener('drop', onEditorDrop, true)
+    view.value.dom.removeEventListener('paste', onEditorPaste, true)
     view.value.destroy()
     view.value = null
   }
@@ -346,7 +575,7 @@ watch(
 // handlers mid-session. Reactive props on Vue are picked up lazily — mirror
 // them explicitly so the commands see the current function reference.
 watch(
-  () => [props.onRequestLink, props.onRequestImage],
+  () => [props.onRequestLink, props.onRequestImage, props.onUploadImage],
   () => {
     syncRequestCallbacks()
   }

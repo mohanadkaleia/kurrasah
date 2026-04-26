@@ -23,10 +23,14 @@ import {
   type ToolbarProps,
   type LinkCallback,
   type ImageCallback,
+  type UploadImageCallback,
   type LinkRequestContext,
   type ImageRequestContext,
+  type UploadImageContext,
+  type UploadImageSource,
   type LinkResult,
   type ImageResult,
+  type UploadImageResult,
   type EditorInstance,
   type EditorCommandName,
   type EditorEmits,
@@ -60,6 +64,12 @@ const props: EditorProps = {
     src: 'https://example.com/pic.png',
     alt: 'alt',
   }),
+  onUploadImage: async (file: File, ctx: UploadImageContext) => {
+    // `ctx.source` is narrowed to the literal union — exhaustive switch.
+    const src: UploadImageSource = ctx.source
+    void src
+    return { src: 'https://example.com/up.png', alt: file.name }
+  },
 }
 
 // Slash-menu props are both optional strings / booleans.
@@ -109,10 +119,34 @@ const linkAsync: LinkCallback = async (ctx: LinkRequestContext) => ({
 const imgSync: ImageCallback = () => ({ src: 'https://x.com/p.png' })
 const imgAsync: ImageCallback = async () => null
 
+// Upload callback exemplars — sync (returning plain object) and async
+// (returning a Promise). Either shape is acceptable.
+const uploadSync: UploadImageCallback = (_file, ctx) => {
+  // Source is narrowed to the literal union: switch is exhaustive.
+  if (ctx.source === 'drop') return { src: 'https://x.com/d.png' }
+  return { src: 'https://x.com/p.png' }
+}
+const uploadAsync: UploadImageCallback = async (file, _ctx) => ({
+  src: `https://x.com/${file.name}`,
+  alt: file.name,
+})
+const uploadCancel: UploadImageCallback = async () => null
+
+// Result type alias check.
+const uploadOk: UploadImageResult = { src: 'https://x.com/p.png' }
+void uploadOk
+
+// `source` is `'drop' | 'paste'` and nothing else.
+// @ts-expect-error — 'click' is not a valid UploadImageSource.
+const _badSource: UploadImageSource = 'click'
+
 void linkSync
 void linkAsync
 void imgSync
 void imgAsync
+void uploadSync
+void uploadAsync
+void uploadCancel
 
 // ---- Emits shape --------------------------------------------------------
 // Each event is a validator function in EmitsOptions form — the shape Vue's
