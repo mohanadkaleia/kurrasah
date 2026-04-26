@@ -77,7 +77,8 @@ Marks: strong, em, link, inline code.
 | Shift-Ctrl-8 | Bullet list |
 | Shift-Ctrl-9 | Ordered list |
 | Tab / Shift-Tab | Sink / lift list item. **Inside a table**: move to the next / previous cell (creates a new row when tabbing past the last cell of the last row). |
-| Mod-Enter | Exit code block |
+| Mod-Enter | Exit code block immediately |
+| Enter (×2) inside a code block | Strip the trailing blank line and exit into a new paragraph |
 | Mod-Z / Shift-Mod-Z | Undo / redo |
 
 ## Input rules
@@ -378,6 +379,8 @@ A subset of CSS custom properties can be overridden on `.editor-root` (or any an
 - **`execCommand` returns `true` on the async link/image path as soon as the callback is dispatched, not when the edit lands.** For sync commands (`toggleBold` etc.) the boolean is "edit applied". For `toggleLink` / `insertImage` when a consumer callback is active, the boolean is "request accepted"; the edit is committed later when the callback resolves, or skipped silently if the consumer returns `null` / an invalid URL. If you need to await the edit, hold a reference to the editor view and observe the next transaction.
 - **`focus()` is not called after an async link/image command.** The consumer modal owns focus until the callback resolves. Sync commands still auto-focus as before.
 - **Link clicks.** A plain click on a link follows it in a new tab (edit or readonly). **Cmd/Ctrl+click** places the cursor inside the link — use that when you need to edit the link text itself. Matches Medium / Substack.
+- **Image clicks select the image as a NodeSelection.** Press Backspace or Delete afterward to remove it. The selected image gets a 2 px outline so the user can see what's about to go.
+- **Trailing-paragraph guard.** The doc never ends in a "trapping" block (table, code block, blockquote, list) and two trapping blocks are never adjacent — an empty paragraph is auto-inserted in those positions so the caret always has somewhere to land. The guard runs on every transaction and once on initial view creation, so it survives a markdown reload.
 
 ## Bundling
 
@@ -387,4 +390,4 @@ The ProseMirror packages (`prosemirror-*`) and Vue are declared as peer dependen
 
 ## Status
 
-v0.1.0 — first non-zero release. Backend-agnostic, Vue 3 only, ready for consumer integration.
+v0.6.0 — backend-agnostic, Vue 3 only, RTL-first. See [`CHANGELOG.md`](./CHANGELOG.md) for the full release history.
