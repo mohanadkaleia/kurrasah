@@ -260,6 +260,75 @@ describe('insertTable — command', () => {
     expect(inCell).toBe(true)
     wrapper.unmount()
   })
+
+  it('places the cursor in the FIRST header/cell of the FIRST row (not the second or third column)', async () => {
+    const wrapper = mountEditor({ modelValue: '' })
+    await nextTick()
+    const view = wrapper.vm.view
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 1))
+    )
+    wrapper.vm.execCommand('insertTable', {
+      rows: 3,
+      cols: 3,
+      withHeader: true,
+    })
+    await nextTick()
+
+    // Locate the inserted table.
+    let tableNode = null
+    let tablePos = -1
+    view.state.doc.descendants((n, pos) => {
+      if (n.type.name === 'table' && tableNode === null) {
+        tableNode = n
+        tablePos = pos
+        return false
+      }
+      return true
+    })
+    expect(tableNode).not.toBeNull()
+
+    // Compute the position of the FIRST cell of the FIRST row.
+    // Layout: tablePos points at the table_open boundary. Inside the
+    // table the first row sits at tablePos+1; inside that row the
+    // first cell sits at tablePos+2.
+    const firstRow = tableNode.child(0)
+    const firstCell = firstRow.child(0)
+    // Walk forward from tablePos+1 (inside table) and pull the first
+    // table_cell or table_header pos to compare against the cursor.
+    let firstCellPos = -1
+    view.state.doc.nodesBetween(
+      tablePos,
+      tablePos + tableNode.nodeSize,
+      (n, pos) => {
+        if (firstCellPos !== -1) return false
+        if (n.type.name === 'table_cell' || n.type.name === 'table_header') {
+          firstCellPos = pos
+          return false
+        }
+        return true
+      }
+    )
+    expect(firstCellPos).toBeGreaterThan(-1)
+
+    const { $from } = view.state.selection
+    // The cursor's enclosing cell ancestor is `firstCell` (same node ref
+    // as the first cell of the first row). And its `before(d)` matches
+    // `firstCellPos`.
+    let cellDepth = -1
+    for (let d = $from.depth; d > 0; d--) {
+      const t = $from.node(d).type.name
+      if (t === 'table_cell' || t === 'table_header') {
+        cellDepth = d
+        break
+      }
+    }
+    expect(cellDepth).toBeGreaterThan(0)
+    expect($from.node(cellDepth)).toBe(firstCell)
+    expect($from.before(cellDepth)).toBe(firstCellPos)
+
+    wrapper.unmount()
+  })
 })
 
 describe('slashMenu — table item', () => {
@@ -311,6 +380,211 @@ describe('plugins — Tab inside a cell', () => {
     const afterShiftTabPos = view.state.selection.from
     expect(afterShiftTabPos).toBeLessThan(afterTabPos)
 
+    wrapper.unmount()
+  })
+
+  it('Tab past the last cell creates a new row and lands the cursor in its first cell', async () => {
+    const wrapper = mountEditor({ modelValue: '' })
+    await nextTick()
+    const view = wrapper.vm.view
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 1))
+    )
+    // 1×2 table — a header row with two cells. No body rows.
+    wrapper.vm.execCommand('insertTable', {
+      rows: 1,
+      cols: 2,
+      withHeader: true,
+    })
+    await nextTick()
+
+    // Move the cursor into the LAST cell of the (only) row.
+    let tableNode = null
+    let tablePos = -1
+    view.state.doc.descendants((n, pos) => {
+      if (n.type.name === 'table' && tableNode === null) {
+        tableNode = n
+        tablePos = pos
+        return false
+      }
+      return true
+    })
+    expect(tableNode).not.toBeNull()
+    expect(tableNode.childCount).toBe(1) // one row
+
+    // Find the position of the LAST cell in that row.
+    let lastCellPos = -1
+    view.state.doc.nodesBetween(
+      tablePos,
+      tablePos + tableNode.nodeSize,
+      (n, pos) => {
+        if (n.type.name === 'table_cell' || n.type.name === 'table_header') {
+          lastCellPos = pos
+        }
+        return true
+      }
+    )
+    expect(lastCellPos).toBeGreaterThan(-1)
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, lastCellPos + 1)
+      )
+    )
+    await nextTick()
+
+    // Tab from the last cell of the only row should:
+    //   1. fail upstream `goToNextCell(1)` (no next cell)
+    //   2. add a new row
+    //   3. move the cursor into the first cell of the new row
+    fireKey(view, 'Tab')
+    await nextTick()
+
+    // Re-locate the table — its size has grown.
+    let nextTableNode = null
+    view.state.doc.descendants((n) => {
+      if (n.type.name === 'table' && nextTableNode === null) {
+        nextTableNode = n
+        return false
+      }
+      return true
+    })
+    expect(nextTableNode).not.toBeNull()
+    expect(nextTableNode.childCount).toBe(2) // header + new body row
+
+    // The cursor is in a cell, AND that cell is in the SECOND row
+    // (the newly added one) AND it is the FIRST cell of that row.
+    const { $from } = view.state.selection
+    let cellDepth = -1
+    for (let d = $from.depth; d > 0; d--) {
+      const t = $from.node(d).type.name
+      if (t === 'table_cell' || t === 'table_header') {
+        cellDepth = d
+        break
+      }
+    }
+    expect(cellDepth).toBeGreaterThan(0)
+    // The cell's parent is a row — that row is the SECOND child of
+    // the table.
+    const cell = $from.node(cellDepth)
+    const row = $from.node(cellDepth - 1)
+    expect(row).toBe(nextTableNode.child(1))
+    expect(cell).toBe(row.child(0))
+
+    wrapper.unmount()
+  })
+})
+
+describe('plugins — trailing-paragraph guard', () => {
+  it('appends an empty paragraph after a table inserted at end-of-doc', async () => {
+    const wrapper = mountEditor()
+    await nextTick()
+    const view = wrapper.vm.view
+
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.atEnd(view.state.doc))
+    )
+    wrapper.vm.execCommand('insertTable', {
+      rows: 2,
+      cols: 2,
+      withHeader: true,
+    })
+    await nextTick()
+
+    const doc = view.state.doc
+    expect(doc.lastChild.type.name).toBe('paragraph')
+    expect(doc.lastChild.content.size).toBe(0)
+
+    let foundTable = false
+    doc.forEach((child) => {
+      if (child.type.name === 'table') foundTable = true
+    })
+    expect(foundTable).toBe(true)
+
+    wrapper.unmount()
+  })
+
+  it('inserts a paragraph between two adjacent tables', async () => {
+    const wrapper = mountEditor()
+    await nextTick()
+    const view = wrapper.vm.view
+
+    // First table at end of empty doc.
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.atEnd(view.state.doc))
+    )
+    wrapper.vm.execCommand('insertTable', { rows: 2, cols: 2, withHeader: true })
+    await nextTick()
+
+    // Move cursor into the trailing paragraph (the last child).
+    const trailingPos = view.state.doc.content.size - 1
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, trailingPos)
+      )
+    )
+    // Insert a second table while sitting in that paragraph.
+    wrapper.vm.execCommand('insertTable', { rows: 2, cols: 2, withHeader: true })
+    await nextTick()
+
+    // Walk the top-level children: there must be at least one non-table
+    // node sitting between the two tables.
+    const types = []
+    view.state.doc.forEach((child) => types.push(child.type.name))
+    const firstTableIdx = types.indexOf('table')
+    const secondTableIdx = types.indexOf('table', firstTableIdx + 1)
+    expect(firstTableIdx).toBeGreaterThanOrEqual(0)
+    expect(secondTableIdx).toBeGreaterThan(firstTableIdx)
+    // At least one non-table child between them — the guard's paragraph.
+    expect(secondTableIdx - firstTableIdx).toBeGreaterThan(1)
+
+    // And the doc still ends in a paragraph (trailing guard).
+    expect(view.state.doc.lastChild.type.name).toBe('paragraph')
+
+    wrapper.unmount()
+  })
+
+  it('enforces invariants on the initial state too (post-reload markdown)', async () => {
+    // Two tables in sequence — markdown serialization between them
+    // collapses any empty separator, so `parseMarkdown` here lands a
+    // doc with two adjacent table nodes. The plugin's
+    // `appendTransaction` hook only fires on `docChanged` events, so
+    // without the explicit one-shot enforcement in `Editor.vue`'s
+    // `createView` the first paint would render the tables stuck
+    // together. This test guards against regression.
+    const md = [
+      '| a | b |',
+      '|---|---|',
+      '| 1 | 2 |',
+      '',
+      '| c | d |',
+      '|---|---|',
+      '| 3 | 4 |',
+    ].join('\n')
+    const wrapper = mountEditor({ modelValue: md })
+    await nextTick()
+    const view = wrapper.vm.view
+
+    const types = []
+    view.state.doc.forEach((child) => types.push(child.type.name))
+    const firstTableIdx = types.indexOf('table')
+    const secondTableIdx = types.indexOf('table', firstTableIdx + 1)
+    expect(firstTableIdx).toBeGreaterThanOrEqual(0)
+    expect(secondTableIdx).toBeGreaterThan(firstTableIdx)
+    expect(secondTableIdx - firstTableIdx).toBeGreaterThan(1)
+    expect(view.state.doc.lastChild.type.name).toBe('paragraph')
+
+    wrapper.unmount()
+  })
+
+  it('does NOT pile up paragraphs when the doc already ends in one', async () => {
+    const wrapper = mountEditor({ modelValue: 'first\n\nsecond' })
+    await nextTick()
+    const view = wrapper.vm.view
+    const before = view.state.doc.childCount
+    view.dispatch(view.state.tr.insertText(' '))
+    await nextTick()
+    expect(view.state.doc.childCount).toBe(before)
+    expect(view.state.doc.lastChild.type.name).toBe('paragraph')
     wrapper.unmount()
   })
 })

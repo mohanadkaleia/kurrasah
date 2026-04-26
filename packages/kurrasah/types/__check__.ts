@@ -51,6 +51,7 @@ const props: EditorProps = {
   slashTrigger: '@',
   slashEnabled: true,
   blockControlsEnabled: true,
+  tableToolbarEnabled: true,
   onRequestLink: async ({ href, text }): Promise<LinkResult | null> => {
     if (!text) return null
     return { href: href ?? 'https://example.com' }
@@ -73,11 +74,17 @@ const _blockControlsOn: EditorProps = { blockControlsEnabled: true }
 const _blockControlsOff: EditorProps = { blockControlsEnabled: false }
 // @ts-expect-error — blockControlsEnabled must be a boolean.
 const _blockControlsBad: EditorProps = { blockControlsEnabled: 'on' }
+const _tableToolbarOn: EditorProps = { tableToolbarEnabled: true }
+const _tableToolbarOff: EditorProps = { tableToolbarEnabled: false }
+// @ts-expect-error — tableToolbarEnabled must be a boolean.
+const _tableToolbarBad: EditorProps = { tableToolbarEnabled: 'on' }
 void _slashDefaults
 void _slashOnlyTrigger
 void _slashOnlyEnabled
 void _blockControlsOn
 void _blockControlsOff
+void _tableToolbarOn
+void _tableToolbarOff
 
 // `dir` must be one of the string literals.
 // @ts-expect-error — 'diagonal' is not a valid writing direction.

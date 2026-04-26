@@ -235,6 +235,12 @@ const markdown = ref('# مرحبا')
                 <td class="px-4 py-2 border-b border-border">إظهار زر <span class="font-mono" dir="ltr">+</span> عند تمرير المؤشّر فوق فقرة فارغة. راجع <a href="#docs-section-empty-plus" class="underline underline-offset-2 hover:text-accent-hover">زر + للأسطر الفارغة</a>.</td>
               </tr>
               <tr>
+                <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">tableToolbarEnabled</td>
+                <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">boolean</td>
+                <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">true</td>
+                <td class="px-4 py-2 border-b border-border">إظهار شريط الأدوات العائم لإجراءات الجدول (إضافة/حذف الأسطر والأعمدة، حذف الجدول) حين يكون المؤشّر داخل خليّة. مرّر <span class="font-mono" dir="ltr">false</span> لإيقافه.</td>
+              </tr>
+              <tr>
                 <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">onRequestLink</td>
                 <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">(context) =&gt; Promise&lt;{href, title?} | null&gt; | null</td>
                 <td class="px-4 py-2 border-b border-border font-mono" dir="ltr">null</td>
@@ -347,7 +353,7 @@ const markdown = ref('# مرحبا')
           <li>كتلة شيفرة (<span class="font-mono" dir="ltr">code block</span>)</li>
           <li>فاصل سطر (<span class="font-mono" dir="ltr">hard break</span>)</li>
           <li>صورة (<span class="font-mono" dir="ltr">image</span>)</li>
-          <li>جدول (<span class="font-mono" dir="ltr">table</span>) — بصياغة GFM، مع تنقّل بالسهام وتغيير عرض الأعمدة</li>
+          <li>جدول (<span class="font-mono" dir="ltr">table</span>) — بصياغة GFM، مع تنقّل عبر <span class="font-mono" dir="ltr">Tab</span> / <span class="font-mono" dir="ltr">Shift-Tab</span> وشريط أدوات لإدارة الصفوف والأعمدة</li>
         </ul>
 
         <h3 class="text-[1.25rem] font-semibold text-text-primary mt-6 mb-2">

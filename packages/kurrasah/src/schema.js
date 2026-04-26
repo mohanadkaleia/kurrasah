@@ -15,11 +15,13 @@ import { tableNodes } from 'prosemirror-tables'
 // nodes a content expression compatible with the list commands (liftListItem,
 // sinkListItem, splitListItem, wrapInList).
 //
-// Table nodes are produced via prosemirror-tables's `tableNodes` helper so
-// they carry the `colwidth` attribute that the column-resizing plugin
-// expects. Cell content is restricted to `paragraph+` — lists and nested
-// tables are intentionally out of scope for v1 to avoid GFM-vs-ProseMirror
-// edge cases (GFM has no syntax for either inside a cell).
+// Table nodes are produced via prosemirror-tables's `tableNodes` helper.
+// The helper-emitted `colwidth` attribute remains in the schema for
+// future compatibility (e.g. if column resizing returns), but the
+// resize plugin itself is not shipped — see CHANGELOG 0.5. Cell
+// content is restricted to `inline*` — lists and nested tables are
+// intentionally out of scope for v1 to avoid GFM-vs-ProseMirror edge
+// cases (GFM has no syntax for either inside a cell).
 
 const pDOM = ['p', 0]
 const blockquoteDOM = ['blockquote', 0]

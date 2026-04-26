@@ -26,8 +26,9 @@ import { Decoration, DecorationSet } from 'prosemirror-view'
 import { undo, redo } from 'prosemirror-history'
 import {
   tableEditing,
-  columnResizing,
   goToNextCell,
+  addRowAfter,
+  isInTable,
 } from 'prosemirror-tables'
 import {
   toggleBold,
@@ -293,16 +294,38 @@ function buildKeymap(schema) {
         splitBlock
       )
     )
-    // Tab / Shift-Tab: inside a table, `goToNextCell` moves between cells
-    // (creating a new row when tabbing past the final cell of the final
-    // row). Outside a table, fall through to the list-item sink/lift so
-    // the existing list behaviour is preserved. `chainCommands` stops at
-    // the first command that returns `true`, so the table handler only
-    // wins when the selection is actually inside a cell.
+    // Tab / Shift-Tab: inside a table, `goToNextCell` moves between cells.
+    // Upstream `goToNextCell(1)` returns `false` when there is no next
+    // cell (i.e., the cursor is in the very last cell of the very last
+    // row) — it does NOT auto-create a new row. We chain a small fallback
+    // that adds a row and then advances into it, so Tab past the last
+    // cell creates a new row and lands the cursor in its first cell.
+    //
+    // Outside a table, fall through to the list-item sink/lift so the
+    // existing list behaviour is preserved. `chainCommands` stops at the
+    // first command that returns `true`, so the table handlers only win
+    // when the selection is actually inside a cell.
     if (schema.nodes.table) {
+      const goToNextOrAddRow = (state, dispatch, view) => {
+        if (!isInTable(state)) return false
+        // Try the upstream "move to next cell" first.
+        if (goToNextCell(1)(state, dispatch, view)) return true
+        // No next cell — we're in the last cell of the last row.
+        // Add a new row, then move into its first cell.
+        if (!dispatch) return true
+        if (!addRowAfter(state, dispatch)) return false
+        // After the dispatch, the view's state has the new row. Run
+        // `goToNextCell(1)` against the up-to-date state so the
+        // selection lands inside the freshly inserted row's first
+        // cell.
+        if (view) {
+          goToNextCell(1)(view.state, view.dispatch)
+        }
+        return true
+      }
       bind(
         'Tab',
-        chainCommands(goToNextCell(1), sinkListItem(schema.nodes.list_item))
+        chainCommands(goToNextOrAddRow, sinkListItem(schema.nodes.list_item))
       )
       bind(
         'Shift-Tab',
@@ -363,6 +386,85 @@ function placeholderPlugin(text) {
   })
 }
 
+// Trailing-paragraph guard. Ensures the user can always navigate the
+// caret past a "trapping" block (table, code block, blockquote, list)
+// by enforcing two invariants on the doc's top-level children:
+//
+//   1. The doc never ENDS in a trapping block — a paragraph is appended
+//      after one if it does, so ArrowDown / Enter at the cell boundary
+//      always has a target.
+//   2. Two trapping blocks are never adjacent — a paragraph is inserted
+//      between them so the user can place the caret between two tables
+//      (or a table and a code block, etc.).
+//
+// Plain paragraph endings and paragraph-separated blocks are left alone:
+// adding extra trailing `\n` to plain prose would churn the serialized
+// markdown and surprise consumers reading `getMarkdown()`.
+const TRAILING_GUARD_TYPES = [
+  'table',
+  'code_block',
+  'blockquote',
+  'bullet_list',
+  'ordered_list',
+]
+/**
+ * Build a transaction that enforces the trailing-paragraph invariants on
+ * the given state, or return `null` if the doc already satisfies them.
+ *
+ * Exported so `Editor.vue` can run the enforcement once on view creation
+ * — the initial state never goes through `appendTransaction` (no
+ * `docChanged` event), so a doc parsed from markdown that ends in a
+ * trapping block (or stacks two of them, since markdown collapses
+ * separating empty paragraphs on serialize) would otherwise stay
+ * un-enforced until the user types.
+ */
+export function enforceTrailingParagraphs(state) {
+  const schema = state.schema
+  const trappingTypes = new Set(
+    TRAILING_GUARD_TYPES.map((name) => schema.nodes[name]).filter(Boolean)
+  )
+  const paragraphType = schema.nodes.paragraph
+  if (!paragraphType || trappingTypes.size === 0) return null
+  const doc = state.doc
+  if (doc.childCount === 0) return null
+  const insertAt = []
+  let pos = 0
+  for (let i = 0; i < doc.childCount; i++) {
+    const child = doc.child(i)
+    const childEnd = pos + child.nodeSize
+    if (trappingTypes.has(child.type)) {
+      const isLast = i === doc.childCount - 1
+      const next = isLast ? null : doc.child(i + 1)
+      const nextTrapping = next ? trappingTypes.has(next.type) : false
+      if (isLast || nextTrapping) insertAt.push(childEnd)
+    }
+    pos = childEnd
+  }
+  if (insertAt.length === 0) return null
+  const tr = state.tr
+  for (let i = insertAt.length - 1; i >= 0; i--) {
+    const para = paragraphType.createAndFill()
+    if (para) tr.insert(insertAt[i], para)
+  }
+  return tr.docChanged ? tr : null
+}
+
+function trailingParagraphPlugin(schema) {
+  const trappingTypes = new Set(
+    TRAILING_GUARD_TYPES.map((name) => schema.nodes[name]).filter(Boolean)
+  )
+  const paragraphType = schema.nodes.paragraph
+  if (!paragraphType || trappingTypes.size === 0) {
+    return new Plugin({})
+  }
+  return new Plugin({
+    appendTransaction(transactions, _oldState, newState) {
+      if (!transactions.some((tr) => tr.docChanged)) return null
+      return enforceTrailingParagraphs(newState)
+    },
+  })
+}
+
 // Build the plugin list for an editor. `readonly` returns a minimal set
 // (no keymap, no input rules, no history) because the view is not editable.
 //
@@ -392,14 +494,23 @@ export function buildPlugins({
     slashMenuPlugin({ trigger: slashTrigger, enabled: slashEnabled }),
   ]
 
-  // Table plugins. `columnResizing` installs a plugin-view that renders
-  // the drag handles and must come before `tableEditing` so the resize
-  // gets first crack at mouse events (docs recommend this order). Both
-  // plugins require the schema to carry the table nodes — they hook off
-  // `schema.nodes.table` internally, but guarding keeps the plugin stack
-  // small in a hypothetical reduced-schema build.
+  // Trailing-paragraph guard. When the last block in the doc is a
+  // "trapping" type — a table, code block, blockquote, or list — the
+  // user has nowhere to navigate to after it: there's no paragraph
+  // below to receive the caret on ArrowDown, and inside a table cell
+  // there's no Enter shortcut that escapes the table cleanly. The
+  // plugin appends an empty paragraph after every transaction whose
+  // result leaves the doc ending in one of those types. Plain
+  // paragraph endings are left alone so we don't silently produce
+  // trailing blank lines on serialize for normal docs.
+  plugins.push(trailingParagraphPlugin(schema))
+
+  // Table editing plugin. Hooks off `schema.nodes.table` internally;
+  // guarding here keeps the plugin stack small in a hypothetical
+  // reduced-schema build. Column resizing was dropped after v0.5.0
+  // — the schema's `colwidth` attribute survives (it's part of
+  // `tableNodes`) but no resize handle ships.
   if (schema.nodes.table) {
-    plugins.push(columnResizing())
     plugins.push(tableEditing())
   }
 

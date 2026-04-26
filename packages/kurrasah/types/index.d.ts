@@ -119,6 +119,15 @@ export interface EditorProps {
    * menu (`@` trigger or `Cmd/Ctrl+K`) — the overlay is hover-only.
    */
   blockControlsEnabled?: boolean
+  /**
+   * Enable the floating cell-actions toolbar that appears above a
+   * table while the cursor is inside one of its cells. Provides
+   * row/column insert and delete actions plus delete-table. Default
+   * `true`. Set `false` to opt out without forking — consumers who
+   * ship their own table chrome or want a fully keyboard-driven
+   * surface.
+   */
+  tableToolbarEnabled?: boolean
   /** Optional hook for link UI. See `LinkCallback`. */
   onRequestLink?: LinkCallback | null
   /** Optional hook for image UI. See `ImageCallback`. */

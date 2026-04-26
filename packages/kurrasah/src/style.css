@@ -72,6 +72,16 @@
 .editor-root .editor-content p {
   margin-block: 0.75em;
   line-height: 1.7;
+  /*
+   * Empty paragraphs inserted by the trailing-paragraph guard
+   * (`plugins.js#trailingParagraphPlugin`) need visible height so the
+   * user can see — and click into — the line between two tables (or
+   * any two trapping blocks). ProseMirror inserts a
+   * `<br class="ProseMirror-trailingBreak">` for empty inline-content
+   * nodes, but the rendered height still depends on `min-height`.
+   * One full line of the editor's reading rhythm is right.
+   */
+  min-height: 1em;
 }
 
 .editor-root .editor-content blockquote,
@@ -209,11 +219,12 @@
  * override a consumer's deliberate alignment.
  *
  * Column widths are driven by `prosemirror-tables` via inline <col> elements
- * on a wrapping <colgroup>. The default rendering (before any user resize)
- * spreads columns evenly. We set `table-layout: fixed` so the browser
+ * on a wrapping <colgroup>. We set `table-layout: fixed` so the browser
  * honours those widths instead of re-flowing based on content — otherwise
- * a long cell forces the other columns to shrink and the resize handles
- * end up in surprising places.
+ * a long cell forces the other columns to shrink and the table reflows
+ * unexpectedly. Column resizing is not shipped (see CHANGELOG 0.5); the
+ * schema's `colwidth` attribute is still part of `tableNodes` for
+ * compatibility but is rendered evenly by default.
  */
 /*
  * `prosemirror-tables` wraps every table in a `<div class="tableWrapper">`
@@ -266,32 +277,6 @@
   background: rgba(0, 0, 0, 0.04);
   outline: 2px solid currentColor;
   outline-offset: -2px;
-}
-
-/*
- * Column-resize handle. `prosemirror-tables` adds a <div class="column-resize-handle">
- * to the cell on the right edge (physical right, regardless of document
- * direction — the handle sits on the visual cell-end). Under RTL the
- * "visual right" of a cell IS the end of that cell, which is exactly
- * where a resize grip belongs, so physical right is correct here.
- *
- * Keep it subtle — a 2px vertical strip that only shows up while the
- * user is dragging (prosemirror-tables toggles a class on the editor
- * during resize).
- */
-.editor-root .editor-content .column-resize-handle {
-  position: absolute;
-  right: -2px;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  background-color: rgba(0, 0, 0, 0.2);
-  pointer-events: none;
-  z-index: 20;
-}
-
-.editor-root .editor-content.resize-cursor {
-  cursor: col-resize;
 }
 
 /* Placeholder — rendered via decoration in plugins.js */
@@ -568,4 +553,101 @@
 
 .kurrasah-block-control:hover .kurrasah-block-control-glyph {
   color: #111;
+}
+
+/*
+ * Table cell-actions toolbar.
+ *
+ * Mounted via Teleport-to-body so the rules below sit OUTSIDE the
+ * `.editor-root` scope. Every selector uses the `.kurrasah-` prefix to
+ * avoid colliding with consumer styles. Black-and-white aesthetic only.
+ *
+ * Positioning exception: physical `left` / `top` (not logical
+ * `inset-inline-start`). The popover anchors to viewport-relative
+ * coords produced by `view.coordsAtPos`, which are always physical.
+ *
+ * z-index 95 sits comfortably below the slash menu's 1000, slightly
+ * above the block controls' 90 so a stacking clash favors the
+ * cell-actions UI when the cursor is in a cell.
+ */
+.kurrasah-table-toolbar {
+  position: fixed;
+  z-index: 95;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  padding-block: 0.25rem;
+  padding-inline: 0.25rem;
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-radius: 0.375rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'Noto Sans Arabic',
+    'Cairo',
+    'Tahoma',
+    sans-serif;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.kurrasah-table-toolbar-btn {
+  appearance: none;
+  background: transparent;
+  color: #111;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  padding-block: 0.125rem;
+  padding-inline: 0.375rem;
+  margin: 0;
+  min-inline-size: 1.5rem;
+  block-size: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  line-height: 1;
+  font: inherit;
+  user-select: none;
+  gap: 0.25rem;
+}
+
+.kurrasah-table-toolbar-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.kurrasah-table-toolbar-btn:focus-visible {
+  outline: 2px solid #000;
+  outline-offset: 1px;
+}
+
+.kurrasah-table-toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.kurrasah-table-toolbar-btn-danger {
+  color: #111;
+}
+
+.kurrasah-table-toolbar-btn-danger:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.kurrasah-table-toolbar-sep {
+  display: inline-block;
+  inline-size: 1px;
+  block-size: 1rem;
+  background: #e5e5e5;
+  margin-inline: 0.125rem;
+}
+
+.kurrasah-table-toolbar-icon {
+  inline-size: 0.875rem;
+  block-size: 0.875rem;
+  display: inline-block;
+  flex: 0 0 auto;
 }

@@ -391,19 +391,28 @@ export function insertTable(schema, options = {}) {
       // first-cell cursor target *after* the replace lands.
       const { from } = state.selection
       const tr = state.tr.replaceSelectionWith(table)
-      // Boundary layout after insertion (using `from` as the position of
-      // the table_open boundary that replaceSelectionWith writes):
-      //   from + 0   table_open
-      //   from + 1   row_open
-      //   from + 2   header_open (or cell_open)
-      //   from + 3   first valid cursor position inside the cell
-      //
-      // `TextSelection.near` resolves against the post-insert doc and
-      // lands the cursor on the closest valid text position.
-      const targetPos = from + 3
+      // Walk forward from the insertion point and find the FIRST node
+      // whose type is `table_cell` or `table_header`. Place the cursor
+      // at `cellPos + 1` (inside the cell's inline content) using
+      // `TextSelection.create` — deterministic placement, unlike
+      // `TextSelection.near` which can drift to a "more natural" text
+      // position several columns in.
       const targetDoc = tr.doc
-      if (targetPos <= targetDoc.content.size) {
-        tr.setSelection(TextSelection.near(targetDoc.resolve(targetPos)))
+      let firstCellPos = -1
+      targetDoc.nodesBetween(from, targetDoc.content.size, (node, pos) => {
+        if (firstCellPos !== -1) return false
+        const name = node.type.name
+        if (name === 'table_cell' || name === 'table_header') {
+          firstCellPos = pos
+          return false
+        }
+        return true
+      })
+      if (firstCellPos !== -1) {
+        const cursorPos = firstCellPos + 1
+        if (cursorPos <= targetDoc.content.size) {
+          tr.setSelection(TextSelection.create(targetDoc, cursorPos))
+        }
       }
       tr.scrollIntoView()
       dispatch(tr)

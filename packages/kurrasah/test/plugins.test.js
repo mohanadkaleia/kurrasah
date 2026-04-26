@@ -143,22 +143,29 @@ describe('Enter at end of code block exits after a blank line', () => {
       view.state.tr.setSelection(TextSelection.atEnd(view.state.doc))
     )
 
-    // First Enter: inserts a `\n` inside the code block. Content
-    // becomes "const x = 1\n", cursor at the end.
+    // First Enter: inserts a `\n` inside the code block. The trailing-
+    // paragraph guard plugin also kicks in here — the doc was
+    // `[code_block]` and code_block is in the trapping set, so the
+    // plugin appends an empty paragraph after it. After this Enter the
+    // doc is `[code_block, paragraph]`.
     fireKey(view, 'Enter')
-    expect(view.state.doc.lastChild.type.name).toBe('code_block')
-    expect(view.state.doc.lastChild.textContent).toBe('const x = 1\n')
+    expect(view.state.doc.firstChild.type.name).toBe('code_block')
+    expect(view.state.doc.firstChild.textContent).toBe('const x = 1\n')
 
-    // Second Enter: the trailing `\n` is stripped AND a new paragraph
-    // is appended after the code block. Cursor lands in the paragraph.
+    // Second Enter: the trailing `\n` is stripped AND `exitCode` inserts
+    // a new paragraph after the code block, landing the cursor in it.
+    // The trailing guard from the first Enter is still present, so the
+    // doc ends up as `[code_block, paragraph (cursor), paragraph (guard)]`.
     fireKey(view, 'Enter')
     const children = []
     view.state.doc.forEach((child) => children.push(child))
-    expect(children[children.length - 1].type.name).toBe('paragraph')
-    // The code block retained the intended content (no lingering blank).
-    const codeBlock = children[children.length - 2]
-    expect(codeBlock.type.name).toBe('code_block')
-    expect(codeBlock.textContent).toBe('const x = 1')
+    expect(children[0].type.name).toBe('code_block')
+    expect(children[0].textContent).toBe('const x = 1')
+    // Every child after the code block is a paragraph — the cursor's
+    // paragraph plus the trailing-guard paragraph at the end.
+    for (const child of children.slice(1)) {
+      expect(child.type.name).toBe('paragraph')
+    }
     destroy()
   })
 })

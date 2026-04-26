@@ -41,6 +41,7 @@ import 'kurrasah/style.css'
 | `slashTrigger` | `string` | `'@'` | Trigger character for the slash (block-type) menu. See [Slash command menu](#slash-command-menu). |
 | `slashEnabled` | `boolean` | `true` | Enable the slash menu. |
 | `blockControlsEnabled` | `boolean` | `true` | Enable the hover-shown "+" button on empty paragraphs. See [Per-block hover controls](#per-block-hover-controls). |
+| `tableToolbarEnabled` | `boolean` | `true` | Enable the floating cell-actions toolbar shown above a table while the cursor is inside one of its cells. See [Tables](#tables) → [إدارة الأسطر والأعمدة](#إدارة-الأسطر-والأعمدة-row--column-management). |
 | `onRequestLink` | `(context) => Promise<{href, title?} \| null> \| {href, title?} \| null` | `null` | Optional hook called when the link command needs a URL. Return `null` to cancel. See [Link / image UI hooks](#link--image-ui-hooks). |
 | `onRequestImage` | `(context) => Promise<{src, alt?, title?} \| null> \| {src, alt?, title?} \| null` | `null` | Same, for images. |
 
@@ -137,12 +138,26 @@ italic, inline code, links). This matches GFM's own constraints:
   the slash menu's block-type items are effectively no-ops while the
   cursor is inside a cell.
 
-### Column resizing
+### إدارة الأسطر والأعمدة (Row & column management)
 
-Drag the right edge of a column to resize it. Widths are stored on each
-cell's `colwidth` attr and survive markdown round-trip as stable column
-widths on the rendered table (`<col>` elements inside a wrapping
-`<colgroup>`).
+While the cursor is inside any cell, a small floating toolbar appears
+above the table with the canonical row/column actions:
+
+- **صفّ أعلاه / صفّ أسفل** — add a row above / below the current row.
+- **عمود قبل / عمود بعد** — add a column before / after the current
+  column. *Before* and *after* are LOGICAL — they follow the reading
+  order of the document, so under `dir="rtl"` "before" means "to the
+  right of the current cell" and under `dir="ltr"` it means "to the
+  left". Same convention as `prosemirror-tables`.
+- **حذف صفّ / حذف عمود** — delete the current row / column.
+- **حذف الجدول** — delete the entire table.
+
+Buttons disable automatically when their command would no-op for the
+current state (e.g. *حذف صفّ* with only one row left). The toolbar
+hides while the slash menu is open so the two popovers don't compete.
+Pass `tableToolbarEnabled="false"` on `<Editor>` to turn the toolbar
+off; the `Tab` / `Shift-Tab` cell-navigation keymap remains active in
+either case.
 
 ### Header row
 

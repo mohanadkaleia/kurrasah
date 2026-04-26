@@ -13,9 +13,14 @@ import { EditorView } from 'prosemirror-view'
 import Toolbar from './Toolbar.vue'
 import SlashMenu from './SlashMenu.vue'
 import BlockControls from './BlockControls.vue'
+import TableToolbar from './TableToolbar.vue'
 import { buildSchema } from './schema.js'
 import { createMarkdownIO } from './markdown.js'
-import { buildPlugins, placeholderKey } from './plugins.js'
+import {
+  buildPlugins,
+  enforceTrailingParagraphs,
+  placeholderKey,
+} from './plugins.js'
 import { commandFactories } from './commands.js'
 
 // Public API:
@@ -66,6 +71,10 @@ const props = defineProps({
   // Set `false` to disable the overlay entirely — consumers who ship
   // their own block-level UI or need a keyboard-only surface.
   blockControlsEnabled: { type: Boolean, default: true },
+  // Floating cell-actions toolbar (add/remove rows/columns, delete
+  // table). Surfaces above a table while the cursor is inside one of
+  // its cells. Default on. Set `false` to opt out without forking.
+  tableToolbarEnabled: { type: Boolean, default: true },
   onRequestLink: { type: Function, default: null },
   onRequestImage: { type: Function, default: null },
 })
@@ -141,6 +150,21 @@ function createView() {
   //   - Cmd/Ctrl-click: let PM handle it so the cursor can land inside
   //     the link for editing the anchor text.
   view.value.dom.addEventListener('click', onLinkClickCapture, true)
+
+  // Apply trailing-paragraph invariants to the *initial* state. Plugins'
+  // `appendTransaction` hook only fires on `docChanged` events, so a
+  // doc parsed from markdown that ends in (or stacks) trapping blocks
+  // — markdown can't preserve empty paragraphs between two tables, so
+  // `parseMarkdown` produces back-to-back tables on round-trip — would
+  // otherwise stay un-enforced until the user types.
+  const initialEnforce = enforceTrailingParagraphs(view.value.state)
+  if (initialEnforce) {
+    // `addToHistory: false` keeps this synthetic insertion out of the
+    // user's undo stack — they didn't ask for it.
+    initialEnforce.setMeta('addToHistory', false)
+    view.value.dispatch(initialEnforce)
+  }
+
   // Emit on initial mount AND on every rebuild so consumers that toggle
   // `images`/`links` always have a live view reference. Consumers that
   // only care about the first mount can ignore subsequent emits.
@@ -369,6 +393,13 @@ const showToolbar = computed(
       :revision="revision"
       :dir="dir"
       :enabled="blockControlsEnabled"
+    />
+    <TableToolbar
+      v-if="tableToolbarEnabled"
+      :view="view"
+      :revision="revision"
+      :dir="dir"
+      :enabled="tableToolbarEnabled"
     />
   </div>
 </template>

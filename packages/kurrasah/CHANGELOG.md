@@ -17,6 +17,28 @@ Each release lists changes under some of these subsections:
   switched from "top of the line + 2px" to "vertical midpoint of the
   line", with `transform: translateY(-50%)` on the overlay so the
   alignment is independent of overlay height or line-height.
+- `insertTable` now lands the cursor in the first cell of the first
+  row deterministically. Previous releases used
+  `TextSelection.near(from + 3)`, which resolves against "the closest
+  natural text position" and could drift to a middle-column cell on
+  some doc shapes. The replacement walks `tr.doc` forward from the
+  insertion point and seats the cursor at `firstCell + 1` via
+  `TextSelection.create`.
+- `Tab` past the final cell of the final row now reliably creates a
+  new row. Upstream `goToNextCell(1)` returns `false` rather than
+  growing the table — the keymap chain now adds `addRowAfter` as a
+  fallback before falling through to the list-item handler.
+- Trailing-paragraph guard — a new plugin keeps the doc's top-level
+  shape navigable: empty paragraphs are appended after a trapping
+  block (table, code block, blockquote, list) at the end of the doc,
+  AND inserted between two adjacent trapping blocks. Solves "I
+  inserted a table and can't escape it" + "two tables are visually
+  glued together" in one rule. The plugin runs on every transaction
+  via `appendTransaction`, AND once on initial view creation so the
+  invariant survives a markdown reload (markdown collapses empty
+  paragraphs between blocks, so a parsed doc may have adjacent
+  trapping blocks). Empty paragraphs render with `min-height: 1em`
+  so the cursor target is visible.
 
 ### Added
 - **GFM tables** — a new block-level content type. Four schema nodes
@@ -27,12 +49,21 @@ Each release lists changes under some of these subsections:
     own constraints (no in-cell line breaks, lists, or nested tables).
   - `Tab` / `Shift-Tab` move between cells while the cursor is inside
     a table; outside a table they still sink / lift list items.
-    `Tab` past the final cell of the final row creates a new row.
-  - Column resizing via drag on the right edge of a column. Widths
-    persist on each cell's `colwidth` attribute.
+    `Tab` past the final cell of the final row creates a new row and
+    seats the cursor in its first cell.
   - `CellSelection` decoration renders the selection as a neutral gray
     overlay with a `currentColor` outline — stays inside the package's
     monochrome aesthetic (upstream prosemirror-tables uses blue).
+- **Cell-actions toolbar** — a small floating toolbar that appears
+  above the table while the cursor is inside one of its cells. Buttons:
+  add row above / below, add column before / after, delete row,
+  delete column, delete table. Each action dispatches the
+  corresponding `prosemirror-tables` command and refocuses the editor;
+  buttons disable themselves when their command would no-op (e.g.
+  delete-row with one row left). Hides while the slash menu is open
+  so the two popovers don't compete. New `<Editor>` prop
+  `tableToolbarEnabled: boolean` (default `true`) opts out without
+  forking. Aria-labels and tooltips are in Arabic.
 - New named command `insertTable(options)` — dispatch via
   `editor.execCommand('insertTable', { rows, cols, withHeader })`.
   Defaults to a 3×3 table with a header row. Rows and columns are
@@ -54,11 +85,14 @@ Each release lists changes under some of these subsections:
   table whose first row is `table_cell`s (legal in ProseMirror,
   invalid in GFM), the serializer synthesizes an empty header row so
   the output re-parses as a valid GFM table.
-- Tables are always-on in v0.5; no new `<Editor>` prop. Consumers who
-  don't want tables can ignore the slash-menu item — the slash-menu
-  item catalog is not yet exported, so a deeper opt-out (disable the
-  plugin, remove the schema node) isn't available in v0.5. Same
-  constraint as the original slash-menu release.
+- Tables are always-on in v0.5 (no opt-out for the schema node or the
+  table-editing plugin). Consumers who don't want users to insert
+  tables can ignore the slash-menu item; the cell-actions toolbar can
+  be turned off via `tableToolbarEnabled="false"`.
+- **No column resizing.** The schema's `colwidth` attribute is part
+  of `tableNodes(...)` and stays for compatibility, but the resize
+  drag handle is not shipped in v0.5. A future release may add it
+  back if the affordance proves valuable in user testing.
 
 ## [0.4.1] — 2026-04-19
 
